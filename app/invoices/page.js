@@ -62,7 +62,15 @@ export default function InvoicesPage() {
       invoice_no: inv.invoice_no, invoice_date: inv.invoice_date, vendor_id: inv.vendor_id || "",
       po_number: inv.po_number || "", currency: inv.currency, tax_amount: inv.tax_amount,
       other_charges: inv.other_charges, notes: inv.notes || "", attachment_path: inv.attachment_path || "",
-      lines: (data || []).map((l) => ({ ...l, unit_cost: String(l.unit_cost), warranty_end: l.warranty_end || "", license_end: l.license_end || "", amc_end: l.amc_end || "", replacement_due: l.replacement_due || "" })),
+      lines: (data || []).map((l) => ({
+        ...l,
+        include_in_budget: !l.remarks?.includes("[EXCLUDED_FROM_BUDGET]"),
+        unit_cost: String(l.unit_cost),
+        warranty_end: l.warranty_end || "",
+        license_end: l.license_end || "",
+        amc_end: l.amc_end || "",
+        replacement_due: l.replacement_due || ""
+      })),
     });
     setOpen(true);
   }
@@ -306,31 +314,41 @@ function InvoiceForm({ value, categories, vendors, userId, onClose, onSaved }) {
         invoiceId = data.id;
       }
 
-      const rows = inv.lines.map((l) => ({
-        lineId: l.id || null,
-        invoice_id: invoiceId,
-        asset_name: l.asset_name.trim(),
-        asset_tag: l.asset_tag || null,
-        serial_no: l.serial_no || null,
-        model: l.model || null,
-        category_id: l.category_id,
-        scope: l.scope,
-        include_in_budget: l.include_in_budget !== false,
-        item_type: l.item_type,
-        staff_name: l.staff_name || null,
-        staff_code: l.staff_code || null,
-        department: l.department || null,
-        location: l.location || null,
-        quantity: Number(l.quantity || 1),
-        unit_cost: Number(l.unit_cost || 0),
-        purchase_date: l.purchase_date,
-        warranty_end: l.warranty_end || null,
-        license_end: l.license_end || null,
-        amc_end: l.amc_end || null,
-        replacement_due: l.replacement_due || null,
-        status: l.status || "in_use",
-        remarks: l.remarks || null,
-      }));
+      const rows = inv.lines.map((l) => {
+        let remarksStr = (l.remarks || "").trim();
+        if (l.include_in_budget === false) {
+          if (!remarksStr.includes("[EXCLUDED_FROM_BUDGET]")) {
+            remarksStr = (`[EXCLUDED_FROM_BUDGET] ${remarksStr}`).trim();
+          }
+        } else {
+          remarksStr = remarksStr.replace(/\[EXCLUDED_FROM_BUDGET\]/g, "").trim();
+        }
+
+        return {
+          lineId: l.id || null,
+          invoice_id: invoiceId,
+          asset_name: l.asset_name.trim(),
+          asset_tag: l.asset_tag || null,
+          serial_no: l.serial_no || null,
+          model: l.model || null,
+          category_id: l.category_id,
+          scope: l.scope,
+          item_type: l.item_type || "hardware",
+          staff_name: l.staff_name || null,
+          staff_code: l.staff_code || null,
+          department: l.department || null,
+          location: l.location || null,
+          quantity: Number(l.quantity || 1),
+          unit_cost: Number(l.unit_cost || 0),
+          purchase_date: l.purchase_date,
+          warranty_end: l.warranty_end || null,
+          license_end: l.license_end || null,
+          amc_end: l.amc_end || null,
+          replacement_due: l.replacement_due || null,
+          status: l.status || "in_use",
+          remarks: remarksStr || null,
+        };
+      });
       const inserts = rows.filter((r) => !r.lineId).map(({ lineId, ...r }) => r);
       const updates = rows.filter((r) => r.lineId);
       if (inserts.length) {
