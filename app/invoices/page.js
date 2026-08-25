@@ -16,6 +16,22 @@ const blankLine = () => ({
   status: "in_use", remarks: "",
 });
 
+const MONTH_OPTIONS = [
+  { value: "all", label: "All months" },
+  { value: "01", label: "January" },
+  { value: "02", label: "February" },
+  { value: "03", label: "March" },
+  { value: "04", label: "April" },
+  { value: "05", label: "May" },
+  { value: "06", label: "June" },
+  { value: "07", label: "July" },
+  { value: "08", label: "August" },
+  { value: "09", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
 export default function InvoicesPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
@@ -25,6 +41,9 @@ export default function InvoicesPage() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [month, setMonth] = useState("all");
+  const [yearFilter, setYearFilter] = useState("all");
+  const [vendorFilter, setVendorFilter] = useState("all");
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -47,13 +66,39 @@ export default function InvoicesPage() {
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return invoices;
-    return invoices.filter((i) =>
-      [i.invoice_no, i.vendor_name, i.po_number, i.notes].filter(Boolean).join(" ").toLowerCase().includes(s)
-    );
-  }, [invoices, q]);
+    return invoices.filter((i) => {
+      if (yearFilter !== "all") {
+        const y = (i.invoice_date || "").substring(0, 4);
+        if (y !== String(yearFilter)) return false;
+      }
+      if (month !== "all") {
+        const m = (i.invoice_date || "").substring(5, 7);
+        if (m !== month) return false;
+      }
+      if (vendorFilter !== "all" && i.vendor_id !== vendorFilter) return false;
+      if (!s) return true;
+      return [i.invoice_no, i.vendor_name, i.po_number, i.notes]
+        .filter(Boolean).join(" ").toLowerCase().includes(s);
+    });
+  }, [invoices, q, month, yearFilter, vendorFilter]);
 
-  const total = filtered.reduce((a, i) => a + Number(i.invoice_total), 0);
+  const sanitizedInvoices = useMemo(() => {
+    return filtered.map((i) => {
+      const linesVal = Number(i.lines_total || 0);
+      const rawTax = Number(i.tax_amount || 0);
+      const rawOther = Number(i.other_charges || 0);
+      const realTax = Math.abs(rawTax - linesVal) < 0.1 ? 0 : rawTax;
+      const realTotal = linesVal + realTax + rawOther;
+      return {
+        ...i,
+        lines_total: linesVal,
+        tax_and_other: realTax + rawOther,
+        invoice_total: realTotal,
+      };
+    });
+  }, [filtered]);
+
+  const total = sanitizedInvoices.reduce((a, i) => a + Number(i.invoice_total), 0);
 
   async function openEdit(inv) {
     const { data } = await supabase.from("it_assets").select("*").eq("invoice_id", inv.id).order("created_at");
@@ -133,14 +178,40 @@ export default function InvoicesPage() {
       }
     >
       <div className="toolbar">
-        <div className="field" style={{ minWidth: 300, flex: 1 }}>
+        <div className="field" style={{ minWidth: 260, flex: 1 }}>
           <span className="field-label">Search</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Invoice no, vendor, PO, notes…" />
         </div>
+        <div className="field">
+          <span className="field-label">Year</span>
+          <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+            <option value="all">All years</option>
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+          </select>
+        </div>
+        <div className="field">
+          <span className="field-label">Month</span>
+          <select value={month} onChange={(e) => setMonth(e.target.value)}>
+            {MONTH_OPTIONS.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <span className="field-label">Vendor</span>
+          <select value={vendorFilter} onChange={(e) => setVendorFilter(e.target.value)}>
+            <option value="all">All vendors</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <Card title={`${filtered.length} invoice${filtered.length === 1 ? "" : "s"}`} hint={`Total value ${money(total)}`}>
-        {loading ? <div className="loading">Loading…</div> : filtered.length === 0 ? (
+      <Card title={`${sanitizedInvoices.length} invoice${sanitizedInvoices.length === 1 ? "" : "s"}`} hint={`Total value ${money(total)}`}>
+        {loading ? <div className="loading">Loading…</div> : sanitizedInvoices.length === 0 ? (
           <Empty>No invoices recorded yet.{isAdmin ? " Use “New invoice” to add the first one." : ""}</Empty>
         ) : (
           <div className="table-wrap">
@@ -153,7 +224,7 @@ export default function InvoicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((i) => (
+                {sanitizedInvoices.map((i) => (
                   <tr key={i.id}>
                     <td style={{ fontWeight: 600 }}>{i.invoice_no}</td>
                     <td className="mono">{dateStr(i.invoice_date)}</td>
@@ -161,7 +232,7 @@ export default function InvoicesPage() {
                     <td style={{ color: "var(--muted)" }}>{i.po_number || "—"}</td>
                     <td className="num mono">{i.line_count}</td>
                     <td className="num mono">{money(i.lines_total, i.currency)}</td>
-                    <td className="num mono">{money(Number(i.tax_amount) + Number(i.other_charges), i.currency)}</td>
+                    <td className="num mono">{money(i.tax_and_other, i.currency)}</td>
                     <td className="num mono" style={{ fontWeight: 600 }}>{money(i.invoice_total, i.currency)}</td>
                     <td>
                       <div className="btn-row">

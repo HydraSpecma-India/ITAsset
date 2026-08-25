@@ -12,6 +12,7 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [year, setYear] = useState("all");
+  const [month, setMonth] = useState("all");
   const [cat, setCat] = useState("all");
   const [scope, setScope] = useState("all");
   const [status, setStatus] = useState("all");
@@ -85,6 +86,10 @@ export default function AssetsPage() {
     const s = q.trim().toLowerCase();
     let out = rows.filter((r) => {
       if (year !== "all" && r.budget_year !== Number(year)) return false;
+      if (month !== "all") {
+        const m = (r.purchase_date || "").substring(5, 7);
+        if (m !== month) return false;
+      }
       if (cat !== "all" && r.category_id !== cat) return false;
       if (scope !== "all" && r.scope !== scope) return false;
       if (status !== "all" && r.status !== status) return false;
@@ -104,7 +109,7 @@ export default function AssetsPage() {
       return String(b.purchase_date).localeCompare(String(a.purchase_date));
     });
     return out;
-  }, [rows, q, year, cat, scope, status, budgetFilter, sort]);
+  }, [rows, q, year, month, cat, scope, status, budgetFilter, sort]);
 
   const totals = useMemo(() => {
     const t = { value: 0, qty: 0, local: 0, global: 0, itBudget: 0, excluded: 0 };
@@ -113,7 +118,7 @@ export default function AssetsPage() {
       t.value += val;
       t.qty += r.quantity;
       t[r.scope === "global" ? "global" : "local"] += val;
-      if (r.include_in_budget !== false) {
+      if (isIncludedInBudget(r)) {
         t.itBudget += val;
       } else {
         t.excluded += val;
@@ -158,6 +163,24 @@ export default function AssetsPage() {
           <select value={year} onChange={(e) => setYear(e.target.value)}>
             <option value="all">All years</option>
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <span className="field-label">Month</span>
+          <select value={month} onChange={(e) => setMonth(e.target.value)}>
+            <option value="all">All months</option>
+            <option value="01">January</option>
+            <option value="02">February</option>
+            <option value="03">March</option>
+            <option value="04">April</option>
+            <option value="05">May</option>
+            <option value="06">June</option>
+            <option value="07">July</option>
+            <option value="08">August</option>
+            <option value="09">September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
           </select>
         </div>
         <div className="field">
