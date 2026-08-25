@@ -950,13 +950,14 @@ async function extractTextFromPDFFileInBrowser(file) {
 }
 
 function CsvImportModal({ categories, vendors, onClose, onImported }) {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const [existingDuplicates, setExistingDuplicates] = useState([]);
   const [dupOption, setDupOption] = useState("skip"); // "skip" | "overwrite" | "allow"
+  const [isDragging, setIsDragging] = useState(false);
 
   async function checkDuplicatesForParsedInvoices(invList) {
     const invNos = invList.map((i) => i.invoice_no).filter(Boolean);
@@ -1005,217 +1006,241 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
     return lines;
   }
 
-  function handleFileSelect(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f);
-    setErr("");
-    setExistingDuplicates([]);
+  function parseSingleCsvToInvoices(text) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) return [];
 
-    if (f.name.toLowerCase().endsWith(".pdf")) {
-      setBusy(true);
-      setStatusMsg("Parsing PDF invoice in browser…");
+    const headers = rows[0].map((h) => h.trim().toLowerCase());
+    const findCol = (keys) => headers.findIndex((h) => keys.some((k) => h.includes(k)));
 
-      extractTextFromPDFFileInBrowser(f)
-        .then((text) => {
-          setBusy(false);
-          if (!text) return setErr("Could not read text from PDF file.");
-          
-          const parsedInv = parsePDFTextToInvoice(text, categories, vendors);
-          if (!parsedInv.lines.length) return setErr("Could not extract line items from PDF file.");
-          
-          const totalLines = parsedInv.lines.length;
-          const totalSpend = parsedInv.lines.reduce((sum, l) => sum + (l.quantity * l.unit_cost), 0) + parsedInv.tax_amount;
-          setParsed({ invoices: [parsedInv], totalLines, totalSpend });
-          checkDuplicatesForParsedInvoices([parsedInv]);
-        })
-        .catch((err) => {
-          setBusy(false);
-          setErr("Error parsing PDF in browser: " + err.message);
-        });
-      return;
+    const stmtIdx = headers.indexOf("statement number") !== -1 ? headers.indexOf("statement number") : headers.indexOf("statement_number");
+    const docDateIdx = headers.indexOf("document issue date") !== -1 ? headers.indexOf("document issue date") : headers.indexOf("document_issue_date");
+    const txTypeIdx = headers.indexOf("transaction type") !== -1 ? headers.indexOf("transaction type") : headers.indexOf("transaction_type");
+    const docStatusIdx = headers.indexOf("document status");
+    
+    const dateIdx = docDateIdx !== -1 ? docDateIdx : findCol(["order date", "invoice date", "purchase date", "date"]);
+    const idIdx = stmtIdx !== -1 ? stmtIdx : findCol(["statement number", "invoice number", "invoice_no", "invoice no", "order id", "po number", "id"]);
+    const poIdx = findCol(["po number", "po_number", "po"]);
+    
+    let titleIdx = headers.indexOf("title");
+    if (titleIdx === -1) titleIdx = headers.findIndex((h) => h === "asset name" || h === "product name" || h === "item name");
+    if (titleIdx === -1) titleIdx = headers.findIndex((h) => h.includes("asset") || h.includes("title") || (h.includes("product") && !h.includes("amazon-internal")));
+    if (titleIdx === -1) titleIdx = 0;
+
+    const qtyIdx = findCol(["shipment quantity", "quantity", "item quantity", "order quantity", "qty"]);
+    const ppuIdx = findCol(["unit price excl", "unit price", "purchase ppu", "unit cost", "price", "listed ppu", "ppu"]);
+    const taxIdx = findCol(["total tax amount", "tax amount", "item & shipping tax", "tax"]);
+    const totalIdx = findCol(["net total", "item net total", "order net total", "total", "subtotal"]);
+    const vendorIdx = findCol(["seller name", "vendor", "seller", "supplier"]);
+    const userIdx = findCol(["account user", "user", "staff", "receiver name", "employee"]);
+    const catIdx = findCol(["category", "family", "type"]);
+    const scopeIdx = findCol(["scope", "budget scope"]);
+    const budgetIncIdx = findCol(["include in it budget", "include in budget", "it budget?"]);
+
+    const orderIdColIdx = headers.indexOf("order id") !== -1 ? headers.indexOf("order id") : findCol(["order id", "order_id"]);
+    const defaultCatId = categories[0]?.id || "";
+
+    const refundedOrderIds = new Set();
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || r.length < 3) continue;
+      const rawOrderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
+      const txStr = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
+      const docStr = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
+      const valNum = parseFloat(r[totalIdx]) || 0;
+      const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || valNum < 0;
+      if (isRef && rawOrderId) refundedOrderIds.add(rawOrderId);
     }
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const text = evt.target.result;
-        const rows = parseCSV(text);
-        if (rows.length < 2) return setErr("CSV file appears to be empty or missing headers.");
+    const invoicesMap = new Map();
 
-        const headers = rows[0].map((h) => h.trim().toLowerCase());
-        const findCol = (keys) => headers.findIndex((h) => keys.some((k) => h.includes(k)));
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || r.length < 3) continue;
 
-        const stmtIdx = headers.indexOf("statement number") !== -1 ? headers.indexOf("statement number") : headers.indexOf("statement_number");
-        const docDateIdx = headers.indexOf("document issue date") !== -1 ? headers.indexOf("document issue date") : headers.indexOf("document_issue_date");
-        const txTypeIdx = headers.indexOf("transaction type") !== -1 ? headers.indexOf("transaction type") : headers.indexOf("transaction_type");
-        const docStatusIdx = headers.indexOf("document status");
-        
-        const dateIdx = docDateIdx !== -1 ? docDateIdx : findCol(["order date", "invoice date", "purchase date", "date"]);
-        const idIdx = stmtIdx !== -1 ? stmtIdx : findCol(["statement number", "invoice number", "invoice_no", "invoice no", "order id", "po number", "id"]);
-        const poIdx = findCol(["po number", "po_number", "po"]);
-        
-        let titleIdx = headers.indexOf("title");
-        if (titleIdx === -1) titleIdx = headers.findIndex((h) => h === "asset name" || h === "product name" || h === "item name");
-        if (titleIdx === -1) titleIdx = headers.findIndex((h) => h.includes("asset") || h.includes("title") || (h.includes("product") && !h.includes("amazon-internal")));
-        if (titleIdx === -1) titleIdx = 0;
+      const rawOrderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
+      const txStr = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
+      const docStr = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
+      const valNum = parseFloat(r[totalIdx]) || 0;
+      const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || valNum < 0;
 
-        const qtyIdx = findCol(["shipment quantity", "quantity", "item quantity", "order quantity", "qty"]);
-        const ppuIdx = findCol(["unit price excl", "unit price", "purchase ppu", "unit cost", "price", "listed ppu", "ppu"]);
-        const taxIdx = findCol(["total tax amount", "tax amount", "item & shipping tax", "tax"]);
-        const totalIdx = findCol(["net total", "item net total", "order net total", "total", "subtotal"]);
-        const vendorIdx = findCol(["seller name", "vendor", "seller", "supplier"]);
-        const userIdx = findCol(["account user", "user", "staff", "receiver name", "employee"]);
-        const catIdx = findCol(["category", "family", "type"]);
-        const scopeIdx = findCol(["scope", "budget scope"]);
-        const budgetIncIdx = findCol(["include in it budget", "include in budget", "it budget?"]);
-
-        const orderIdColIdx = headers.indexOf("order id") !== -1 ? headers.indexOf("order id") : findCol(["order id", "order_id"]);
-        const defaultCatId = categories[0]?.id || "";
-
-        // Pass 1: Identify all refunded order IDs
-        const refundedOrderIds = new Set();
-        for (let i = 1; i < rows.length; i++) {
-          const r = rows[i];
-          if (!r || r.length < 3) continue;
-          const rawOrderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
-          const txStr = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
-          const docStr = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
-          const valNum = parseFloat(r[totalIdx]) || 0;
-          const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || valNum < 0;
-          if (isRef && rawOrderId) refundedOrderIds.add(rawOrderId);
-        }
-
-        const invoicesMap = new Map();
-
-        for (let i = 1; i < rows.length; i++) {
-          const r = rows[i];
-          if (!r || r.length < 3) continue;
-
-          const rawOrderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
-          const txStr = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
-          const docStr = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
-          const valNum = parseFloat(r[totalIdx]) || 0;
-          const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || valNum < 0;
-
-          // Skip refunded orders (both charge & refund credit note lines)
-          if ((rawOrderId && refundedOrderIds.has(rawOrderId)) || isRef) {
-            continue;
-          }
-
-          const rawDate = r[dateIdx] || r[findCol(["order date"])] || "";
-          let orderDate = todayISO();
-          if (rawDate) {
-            if (rawDate.includes("/")) {
-              const parts = rawDate.split("/");
-              if (parts.length === 3) orderDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
-            } else if (rawDate.includes("-")) {
-              const parts = rawDate.split("-");
-              if (parts.length === 3) {
-                const [d, m, y] = parts;
-                if (d.length === 4) orderDate = rawDate;
-                else orderDate = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-              }
-            }
-          }
-
-          const orderId = r[idIdx] || `IMP-${i}`;
-          const poNumber = r[poIdx] || "";
-          const sellerName = (vendorIdx !== -1 && r[vendorIdx] ? r[vendorIdx] : "Amazon Business").trim();
-          const title = (r[titleIdx] || "IT Purchase Item").trim();
-          const qty = Math.abs(parseInt(r[qtyIdx])) || 1;
-          const unitCost = Math.abs(parseFloat(r[ppuIdx]) || (valNum ? valNum / qty : 0));
-          const taxAmt = Math.abs(parseFloat(r[taxIdx]) || 0);
-          const staff = r[userIdx] || "";
-
-          // Intelligent Title & Category Classification
-          const t = title.toLowerCase();
-          const getCat = (n) => categories.find((c) => c.name.toLowerCase().includes(n.toLowerCase()))?.id;
-
-          let matchedCatId = defaultCatId;
-          const explicitCatStr = catIdx !== -1 ? (r[catIdx] || "") : "";
-          if (explicitCatStr) {
-            const directMatch = categories.find((c) => c.name.toLowerCase() === explicitCatStr.toLowerCase());
-            if (directMatch) matchedCatId = directMatch.id;
-          }
-
-          if (matchedCatId === defaultCatId) {
-            if (t.includes("toner") || t.includes("cartridge") || t.includes("ink") || t.includes("thermal paper") || t.includes("chempure") || t.includes("ipa") || t.includes("isopropyl") || t.includes("paper")) {
-              matchedCatId = getCat("consumables") || getCat("printers") || defaultCatId;
-            } else if (t.includes("inspection") || t.includes("amc") || t.includes("service")) {
-              matchedCatId = getCat("amc") || getCat("services") || defaultCatId;
-            } else if (
-              t.includes("keyboard") || t.includes("mouse") || t.includes("webcam") ||
-              t.includes("backpack") || t.includes("bag") || t.includes("messenger") ||
-              t.includes("headphone") || t.includes("headset") || t.includes("earphone") || t.includes("airpods") || t.includes("earpad") || t.includes("earsafe") ||
-              t.includes("monitor") || t.includes("display") || t.includes("screen") ||
-              t.includes("cable") || t.includes("hdmi") || t.includes("displayport") || t.includes("dock") || t.includes("stand") || t.includes("sdcard") || t.includes("micro sd") ||
-              t.includes("charger") || t.includes("adapter") || t.includes("chair") || t.includes("memo") || t.includes("gloves")
-            ) {
-              matchedCatId = getCat("peripherals") || getCat("accessories") || defaultCatId;
-            } else if (t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("tab ") || t.includes("mobile") || t.includes("landline")) {
-              matchedCatId = getCat("mobile") || getCat("tablet") || defaultCatId;
-            } else if (t.includes("ups") || t.includes("battery") || t.includes("power socket") || t.includes("power cord") || t.includes("inverter")) {
-              matchedCatId = getCat("ups") || getCat("power") || defaultCatId;
-            } else if (t.includes("laptop") || t.includes("desktop pc") || t.includes("zbook") || t.includes("thinkpad") || t.includes("latitude")) {
-              matchedCatId = getCat("laptops") || getCat("desktops") || defaultCatId;
-            }
-          }
-
-          if (!invoicesMap.has(orderId)) {
-            invoicesMap.set(orderId, {
-              invoice_no: orderId,
-              invoice_date: orderDate,
-              vendor_name: sellerName,
-              po_number: poNumber,
-              tax_amount: 0,
-              lines: []
-            });
-          }
-
-          const isMobile = matchedCatId === getCat("mobile") || matchedCatId === getCat("tablet") || t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("mobile") || t.includes("phone");
-
-          let isIncInBudget = !isMobile;
-          if (budgetIncIdx !== -1 && r[budgetIncIdx]) {
-            const bVal = (r[budgetIncIdx] || "").toLowerCase();
-            if (bVal.includes("no") || bVal.includes("false") || bVal.includes("excluded")) isIncInBudget = false;
-            else if (bVal.includes("yes") || bVal.includes("true")) isIncInBudget = true;
-          }
-
-          let itemScope = "local";
-          if (scopeIdx !== -1 && r[scopeIdx]) {
-            const sVal = (r[scopeIdx] || "").toLowerCase();
-            if (sVal.includes("global")) itemScope = "global";
-          }
-
-          const inv = invoicesMap.get(orderId);
-          inv.tax_amount += taxAmt;
-          inv.lines.push({
-            asset_name: title,
-            category_id: matchedCatId,
-            scope: itemScope,
-            include_in_budget: isIncInBudget,
-            item_type: "hardware",
-            quantity: qty,
-            unit_cost: unitCost,
-            purchase_date: orderDate,
-            status: "in_use",
-            staff_name: staff,
-            remarks: `Vendor: ${sellerName} | Imported from CSV`
-          });
-        }
-
-        const invList = Array.from(invoicesMap.values());
-        const totalLines = invList.reduce((a, i) => a + i.lines.length, 0);
-        const totalSpend = invList.reduce((a, i) => a + i.lines.reduce((lA, l) => lA + l.quantity * l.unit_cost, 0) + i.tax_amount, 0);
-
-        setParsed({ invoices: invList, totalLines, totalSpend });
-        checkDuplicatesForParsedInvoices(invList);
-      } catch (err) {
-        setErr("Failed to parse CSV file: " + err.message);
+      if ((rawOrderId && refundedOrderIds.has(rawOrderId)) || isRef) {
+        continue;
       }
-    };
-    reader.readAsText(f);
+
+      const rawDate = r[dateIdx] || r[findCol(["order date"])] || "";
+      let orderDate = todayISO();
+      if (rawDate) {
+        if (rawDate.includes("/")) {
+          const parts = rawDate.split("/");
+          if (parts.length === 3) orderDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+        } else if (rawDate.includes("-")) {
+          const parts = rawDate.split("-");
+          if (parts.length === 3) {
+            const [d, m, y] = parts;
+            if (d.length === 4) orderDate = rawDate;
+            else orderDate = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+          }
+        }
+      }
+
+      const orderId = r[idIdx] || `IMP-${i}`;
+      const poNumber = r[poIdx] || "";
+      const sellerName = (vendorIdx !== -1 && r[vendorIdx] ? r[vendorIdx] : "Amazon Business").trim();
+      const title = (r[titleIdx] || "IT Purchase Item").trim();
+      const qty = Math.abs(parseInt(r[qtyIdx])) || 1;
+      const unitCost = Math.abs(parseFloat(r[ppuIdx]) || (valNum ? valNum / qty : 0));
+      const taxAmt = Math.abs(parseFloat(r[taxIdx]) || 0);
+      const staff = r[userIdx] || "";
+
+      const t = title.toLowerCase();
+      const getCat = (n) => categories.find((c) => c.name.toLowerCase().includes(n.toLowerCase()))?.id;
+
+      let matchedCatId = defaultCatId;
+      const explicitCatStr = catIdx !== -1 ? (r[catIdx] || "") : "";
+      if (explicitCatStr) {
+        const directMatch = categories.find((c) => c.name.toLowerCase() === explicitCatStr.toLowerCase());
+        if (directMatch) matchedCatId = directMatch.id;
+      }
+
+      if (matchedCatId === defaultCatId) {
+        if (t.includes("toner") || t.includes("cartridge") || t.includes("ink") || t.includes("thermal paper") || t.includes("chempure") || t.includes("ipa") || t.includes("isopropyl") || t.includes("paper")) {
+          matchedCatId = getCat("consumables") || getCat("printers") || defaultCatId;
+        } else if (t.includes("inspection") || t.includes("amc") || t.includes("service")) {
+          matchedCatId = getCat("amc") || getCat("services") || defaultCatId;
+        } else if (
+          t.includes("keyboard") || t.includes("mouse") || t.includes("webcam") ||
+          t.includes("backpack") || t.includes("bag") || t.includes("messenger") ||
+          t.includes("headphone") || t.includes("headset") || t.includes("earphone") || t.includes("airpods") || t.includes("earpad") || t.includes("earsafe") ||
+          t.includes("monitor") || t.includes("display") || t.includes("screen") ||
+          t.includes("cable") || t.includes("hdmi") || t.includes("displayport") || t.includes("dock") || t.includes("stand") || t.includes("sdcard") || t.includes("micro sd") ||
+          t.includes("charger") || t.includes("adapter") || t.includes("chair") || t.includes("memo") || t.includes("gloves")
+        ) {
+          matchedCatId = getCat("peripherals") || getCat("accessories") || defaultCatId;
+        } else if (t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("tab ") || t.includes("mobile") || t.includes("landline")) {
+          matchedCatId = getCat("mobile") || getCat("tablet") || defaultCatId;
+        } else if (t.includes("ups") || t.includes("battery") || t.includes("power socket") || t.includes("power cord") || t.includes("inverter")) {
+          matchedCatId = getCat("ups") || getCat("power") || defaultCatId;
+        } else if (t.includes("laptop") || t.includes("desktop pc") || t.includes("zbook") || t.includes("thinkpad") || t.includes("latitude")) {
+          matchedCatId = getCat("laptops") || getCat("desktops") || defaultCatId;
+        }
+      }
+
+      if (!invoicesMap.has(orderId)) {
+        invoicesMap.set(orderId, {
+          invoice_no: orderId,
+          invoice_date: orderDate,
+          vendor_name: sellerName,
+          po_number: poNumber,
+          tax_amount: 0,
+          lines: []
+        });
+      }
+
+      const isMobile = matchedCatId === getCat("mobile") || matchedCatId === getCat("tablet") || t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("mobile") || t.includes("phone");
+
+      let isIncInBudget = !isMobile;
+      if (budgetIncIdx !== -1 && r[budgetIncIdx]) {
+        const bVal = (r[budgetIncIdx] || "").toLowerCase();
+        if (bVal.includes("no") || bVal.includes("false") || bVal.includes("excluded")) isIncInBudget = false;
+        else if (bVal.includes("yes") || bVal.includes("true")) isIncInBudget = true;
+      }
+
+      let itemScope = "local";
+      if (scopeIdx !== -1 && r[scopeIdx]) {
+        const sVal = (r[scopeIdx] || "").toLowerCase();
+        if (sVal.includes("global")) itemScope = "global";
+      }
+
+      const inv = invoicesMap.get(orderId);
+      inv.tax_amount += taxAmt;
+      inv.lines.push({
+        asset_name: title,
+        category_id: matchedCatId,
+        scope: itemScope,
+        include_in_budget: isIncInBudget,
+        item_type: "hardware",
+        quantity: qty,
+        unit_cost: unitCost,
+        purchase_date: orderDate,
+        status: "in_use",
+        staff_name: staff,
+        remarks: `Vendor: ${sellerName} | Imported from CSV`
+      });
+    }
+
+    return Array.from(invoicesMap.values());
+  }
+
+  async function processFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    const selectedFiles = Array.from(fileList);
+    setFiles(selectedFiles);
+    setErr("");
+    setStatusMsg(`Processing ${selectedFiles.length} file(s)...`);
+    setBusy(true);
+    setExistingDuplicates([]);
+
+    const allInvoices = [];
+
+    try {
+      for (const f of selectedFiles) {
+        if (f.name.toLowerCase().endsWith(".pdf")) {
+          setStatusMsg(`Parsing PDF ${f.name} in browser…`);
+          const text = await extractTextFromPDFFileInBrowser(f);
+          if (text) {
+            const parsedInv = parsePDFTextToInvoice(text, categories, vendors);
+            if (parsedInv && parsedInv.lines.length) {
+              allInvoices.push(parsedInv);
+            }
+          }
+        } else {
+          setStatusMsg(`Parsing file ${f.name}...`);
+          const text = await f.text();
+          const csvInvoices = parseSingleCsvToInvoices(text);
+          allInvoices.push(...csvInvoices);
+        }
+      }
+
+      setBusy(false);
+
+      if (!allInvoices.length) {
+        setErr("Could not extract valid invoice data from the selected files.");
+        setParsed(null);
+        return;
+      }
+
+      const totalLines = allInvoices.reduce((a, inv) => a + inv.lines.length, 0);
+      const totalSpend = allInvoices.reduce((a, inv) => a + inv.lines.reduce((sum, l) => sum + (l.quantity * l.unit_cost), 0) + inv.tax_amount, 0);
+
+      setParsed({ invoices: allInvoices, totalLines, totalSpend });
+      setStatusMsg(`Successfully extracted ${allInvoices.length} invoice(s) with ${totalLines} line item(s) from ${selectedFiles.length} file(s)!`);
+      checkDuplicatesForParsedInvoices(allInvoices);
+    } catch (e) {
+      setBusy(false);
+      setErr("Error processing files: " + e.message);
+    }
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
   }
 
   async function executeImport() {
@@ -1354,12 +1379,43 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
       {err && <div className="alert err">{err}</div>}
       {statusMsg && <div className="alert ok">{statusMsg}</div>}
 
-      <div className="card" style={{ padding: 20, marginBottom: 16, textAlign: "center", border: "2px dashed var(--hs-charcoal)", background: "rgba(15,18,22,0.6)" }}>
-        <input type="file" accept=".csv,.pdf,.xlsx,.txt" id="csvFileInput" style={{ display: "none" }} onChange={handleFileSelect} />
-        <label htmlFor="csvFileInput" className="btn ghost" style={{ cursor: "pointer" }}>
-          📁 Choose PDF Invoice or CSV / Excel File
-        </label>
-        {file && <div style={{ marginTop: 10, fontSize: 13, color: "var(--gold)" }}>Selected: <strong>{file.name}</strong></div>}
+      <div
+        className="card"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        style={{
+          padding: "24px 20px",
+          marginBottom: 16,
+          textAlign: "center",
+          border: `2px dashed ${isDragging ? "var(--gold)" : "var(--hs-charcoal)"}`,
+          background: isDragging ? "rgba(255,204,0,0.12)" : "rgba(15,18,22,0.6)",
+          transition: "all 0.2s ease",
+          borderRadius: 8,
+          cursor: "pointer",
+        }}
+        onClick={() => document.getElementById("csvFileInput")?.click()}
+      >
+        <input
+          type="file"
+          accept=".csv,.pdf,.xlsx,.txt"
+          multiple
+          id="csvFileInput"
+          style={{ display: "none" }}
+          onChange={(e) => processFiles(e.target.files)}
+        />
+        <div style={{ fontSize: 32, marginBottom: 6 }}>📄 📁</div>
+        <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text)" }}>
+          {isDragging ? "Drop your PDF / CSV invoice files here!" : "Drag & Drop multiple PDF invoices or CSV files here"}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+          Or click to browse multiple files at once (.pdf, .csv, .xlsx)
+        </div>
+        {files.length > 0 && (
+          <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--gold)", fontWeight: 600 }}>
+            Selected {files.length} file{files.length === 1 ? "" : "s"}: {files.map((f) => f.name).join(", ")}
+          </div>
+        )}
       </div>
 
       {parsed && existingDuplicates.length > 0 && (
