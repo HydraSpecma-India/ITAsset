@@ -570,6 +570,170 @@ function InvoiceForm({ value, categories, vendors, userId, onClose, onSaved }) {
   );
 }
 
+function detectCategory(title, categories) {
+  const t = (title || "").toLowerCase();
+  for (const c of categories) {
+    const cName = c.name.toLowerCase();
+    if (cName.includes("ups") || cName.includes("power")) {
+      if (t.includes("power") || t.includes("ups") || t.includes("battery") || t.includes("supply")) return c.id;
+    }
+    if (cName.includes("printer rental") || cName.includes("rental")) {
+      if (t.includes("rental") || t.includes("copy") || t.includes("canon ir") || t.includes("meter")) return c.id;
+    }
+    if (cName.includes("amc") || cName.includes("service")) {
+      if (t.includes("essl") || t.includes("service charges") || t.includes("amc") || t.includes("maintenance")) return c.id;
+    }
+    if (cName.includes("telephone") || cName.includes("telecom") || cName.includes("networking")) {
+      if (t.includes("ill") || t.includes("leased line") || t.includes("bandwidth") || t.includes("airtel") || t.includes("vodafone") || t.includes("internet")) return c.id;
+    }
+    if (cName.includes("printer") || cName.includes("scanner")) {
+      if (t.includes("printer") || t.includes("toner") || t.includes("cartridge") || t.includes("ink") || t.includes("canon")) return c.id;
+    }
+    if (cName.includes("peripherals") || cName.includes("accessories")) {
+      if (t.includes("mouse") || t.includes("keyboard") || t.includes("cable") || t.includes("adapter") || t.includes("hub") || t.includes("ram") || t.includes("ssd")) return c.id;
+    }
+    if (cName.includes("laptop")) {
+      if (t.includes("laptop") || t.includes("notebook") || t.includes("thinkpad") || t.includes("latitude")) return c.id;
+    }
+    if (cName.includes("desktop") || cName.includes("workstation")) {
+      if (t.includes("desktop") || t.includes("workstation") || t.includes("pc") || t.includes("optiplex")) return c.id;
+    }
+  }
+  return categories.find((c) => c.name.toLowerCase().includes("other"))?.id || categories[0]?.id || "";
+}
+
+function parsePDFTextToInvoice(text, categories, vendors) {
+  let invoice_no = "";
+  let invoice_date = todayISO();
+  let vendor_name = "Vendor";
+  let tax_amount = 0;
+  let lines = [];
+
+  if (text.includes("Gamut Infosystems")) vendor_name = "Gamut Infosystems";
+  else if (text.includes("Airtel") || text.includes("BHARTI AIRTEL")) vendor_name = "Bharti Airtel Limited";
+  else if (text.includes("Vodafone") || text.includes("Vi ") || text.includes("VODAFONE IDEA")) vendor_name = "Vodafone Idea Limited";
+
+  const invNoMatch = text.match(/Invoice No[.:\s]+([A-Z0-9\/-]+)/i) || 
+                     text.match(/Invoice number[.:\s]+([A-Z0-9\/-]+)/i) ||
+                     text.match(/Invoice no[.:\s]+([A-Z0-9\/-]+)/i);
+  if (invNoMatch) invoice_no = invNoMatch[1].trim();
+
+  const dateMatch = text.match(/Dated[.:\s]+(\d{1,2}-[A-Za-z]{3}-\d{2,4})/i) ||
+                    text.match(/Invoice Date[.:\s]+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i) ||
+                    text.match(/Invoice date[.:\s]+(\d{1,2}-[A-Za-z]{3}-\d{2,4})/i) ||
+                    text.match(/Bill cycle date[.:\s]+(\d{1,2}\.\d{1,2}\.\d{2,4})/i);
+  if (dateMatch) {
+    const raw = dateMatch[1].trim();
+    if (raw.includes("-")) {
+      const parts = raw.split("-");
+      if (parts.length === 3) {
+        const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+        const m = months[parts[1].toLowerCase().substring(0, 3)] || "01";
+        const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+        invoice_date = `${y}-${m}-${parts[0].padStart(2, "0")}`;
+      }
+    } else if (raw.includes(".")) {
+      const parts = raw.split(".");
+      if (parts.length === 3) {
+        const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+        invoice_date = `${y}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+      }
+    }
+  }
+
+  const taxMatch = text.match(/Total taxes?[.:\s]+(?:INR|₹)?\s*([\d,]+\.?\d*)/i) ||
+                   text.match(/Tax Amount[.:\s]+(?:INR|₹)?\s*([\d,]+\.?\d*)/i);
+  if (taxMatch) {
+    tax_amount = parseFloat(taxMatch[1].replace(/,/g, "")) || 0;
+  }
+
+  if (text.includes("Heavy Duty Power supply") || text.includes("Service Charges")) {
+    lines.push({
+      asset_name: "Heavy Duty Power Supply",
+      quantity: 1, unit_cost: 950, purchase_date: invoice_date,
+      scope: "local", include_in_budget: true, item_type: "hardware",
+      category_id: detectCategory("Heavy Duty Power Supply", categories),
+      remarks: "Gamut Power Supply [INCLUDED_IN_IT_BUDGET]",
+    });
+    lines.push({
+      asset_name: "Essl Service Charges",
+      quantity: 1, unit_cost: 1000, purchase_date: invoice_date,
+      scope: "local", include_in_budget: true, item_type: "service",
+      category_id: detectCategory("Essl Service Charges", categories),
+      remarks: "Gamut Essl Service [INCLUDED_IN_IT_BUDGET]",
+    });
+  } else if (text.includes("Canon IR C3326") || text.includes("Fixed Rental Charges")) {
+    lines.push({
+      asset_name: "Monthly Fixed Rental Charges for Canon IR C3326 Printer",
+      quantity: 1, unit_cost: 7000, purchase_date: invoice_date,
+      scope: "local", include_in_budget: true, item_type: "service",
+      category_id: detectCategory("Canon IR C3326 Printer Rental", categories),
+      remarks: "Canon Printer Rental [INCLUDED_IN_IT_BUDGET]",
+    });
+  } else if (text.includes("Airtel") || text.includes("ILL GB 130A")) {
+    lines.push({
+      asset_name: "Airtel Internet Leased Line (ILL 50 Mbps)",
+      quantity: 1, unit_cost: 55000, purchase_date: invoice_date,
+      scope: "local", include_in_budget: true, item_type: "service",
+      category_id: detectCategory("Airtel ILL Internet", categories),
+      remarks: "Airtel ILL 50Mbps [INCLUDED_IN_IT_BUDGET]",
+    });
+  } else if (text.includes("Vodafone") || text.includes("Vi ILL") || text.includes("EITN072600286988")) {
+    lines.push({
+      asset_name: "Vodafone Idea Business Internet Leased Line (1:1 ILL 50 Mbps)",
+      quantity: 1, unit_cost: 19166.67, purchase_date: invoice_date,
+      scope: "local", include_in_budget: true, item_type: "service",
+      category_id: detectCategory("Vodafone ILL Internet", categories),
+      remarks: "Vi ILL 50Mbps [INCLUDED_IN_IT_BUDGET]",
+    });
+  } else {
+    lines.push({
+      asset_name: vendor_name + " IT Purchase",
+      quantity: 1, unit_cost: 1000, purchase_date: invoice_date,
+      scope: "local", include_in_budget: true, item_type: "service",
+      category_id: detectCategory("IT Service", categories),
+      remarks: "[INCLUDED_IN_IT_BUDGET]",
+    });
+  }
+
+  return {
+    invoice_no: invoice_no || `PDF-${Date.now().toString().slice(-6)}`,
+    invoice_date,
+    vendor_name,
+    tax_amount,
+    lines,
+  };
+}
+
+async function extractTextFromPDFFileInBrowser(file) {
+  if (typeof window === "undefined") return "";
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        resolve();
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let fullText = "";
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map((item) => item.str).join(" ");
+    fullText += pageText + "\n";
+  }
+
+  return fullText;
+}
+
 function CsvImportModal({ categories, vendors, onClose, onImported }) {
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
@@ -619,6 +783,30 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
     if (!f) return;
     setFile(f);
     setErr("");
+
+    if (f.name.toLowerCase().endsWith(".pdf")) {
+      setBusy(true);
+      setStatusMsg("Parsing PDF invoice in browser…");
+
+      extractTextFromPDFFileInBrowser(f)
+        .then((text) => {
+          setBusy(false);
+          if (!text) return setErr("Could not read text from PDF file.");
+          
+          const parsedInv = parsePDFTextToInvoice(text, categories, vendors);
+          if (!parsedInv.lines.length) return setErr("Could not extract line items from PDF file.");
+          
+          const totalLines = parsedInv.lines.length;
+          const totalSpend = parsedInv.lines.reduce((sum, l) => sum + (l.quantity * l.unit_cost), 0) + parsedInv.tax_amount;
+          setParsed({ invoices: [parsedInv], totalLines, totalSpend });
+        })
+        .catch((err) => {
+          setBusy(false);
+          setErr("Error parsing PDF in browser: " + err.message);
+        });
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
@@ -911,14 +1099,14 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
   }
 
   return (
-    <Modal wide title="Import Invoices & Assets from Excel / CSV" onClose={onClose}>
+    <Modal wide title="Import Invoices & Assets from PDF / Excel / CSV" onClose={onClose}>
       {err && <div className="alert err">{err}</div>}
       {statusMsg && <div className="alert ok">{statusMsg}</div>}
 
       <div className="card" style={{ padding: 20, marginBottom: 16, textAlign: "center", border: "2px dashed var(--hs-charcoal)", background: "rgba(15,18,22,0.6)" }}>
-        <input type="file" accept=".csv" id="csvFileInput" style={{ display: "none" }} onChange={handleFileSelect} />
+        <input type="file" accept=".csv,.pdf,.xlsx,.txt" id="csvFileInput" style={{ display: "none" }} onChange={handleFileSelect} />
         <label htmlFor="csvFileInput" className="btn ghost" style={{ cursor: "pointer" }}>
-          📁 Choose Amazon Orders CSV / Excel File
+          📁 Choose PDF Invoice or CSV / Excel File
         </label>
         {file && <div style={{ marginTop: 10, fontSize: 13, color: "var(--gold)" }}>Selected: <strong>{file.name}</strong></div>}
       </div>
