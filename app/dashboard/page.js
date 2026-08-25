@@ -122,13 +122,32 @@ export default function DashboardPage() {
 
   const [drilldown, setDrilldown] = useState(null);
 
+  const getMonthFromDateStr = (d) => {
+    if (!d) return "";
+    const str = String(d);
+    if (str.includes("-")) {
+      const parts = str.split("-");
+      if (parts.length === 3) return parts[0].length === 4 ? parts[1].padStart(2, "0") : parts[1].padStart(2, "0");
+    }
+    if (str.includes("/")) {
+      const parts = str.split("/");
+      if (parts.length === 3) return parts[1].padStart(2, "0");
+    }
+    return "";
+  };
+
   const openDrilldown = (title, filteredItems) => {
-    const totalVal = filteredItems.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
-    setDrilldown({
-      title,
-      items: filteredItems,
-      totalVal,
-    });
+    try {
+      const items = Array.isArray(filteredItems) ? filteredItems : [];
+      const totalVal = items.reduce((sum, item) => sum + Number(item?.line_total || (Number(item?.quantity || 1) * Number(item?.unit_cost || 0))), 0);
+      setDrilldown({
+        title: String(title || "Drilldown Details"),
+        items,
+        totalVal,
+      });
+    } catch (err) {
+      console.error("Error opening drilldown:", err);
+    }
   };
 
   const handleKpiClick = (type) => {
@@ -144,14 +163,15 @@ export default function DashboardPage() {
   };
 
   const handleCategoryClick = (catRow) => {
-    const matching = assets.filter((a) => (a.it_categories?.name || "Others").toLowerCase() === catRow.label.toLowerCase());
+    if (!catRow || !catRow.label) return;
+    const matching = assets.filter((a) => (a.it_categories?.name || "Others").toLowerCase() === String(catRow.label).toLowerCase());
     openDrilldown(`Category: ${catRow.label} (${year})`, matching);
   };
 
   const handleMonthlyClick = (colData, colIndex) => {
     const monthNum = String(colIndex + 1).padStart(2, "0");
-    const matching = assets.filter((a) => (a.purchase_date || "").substring(5, 7) === monthNum);
-    openDrilldown(`Monthly Spend: ${colData.label} ${year}`, matching);
+    const matching = assets.filter((a) => getMonthFromDateStr(a.purchase_date) === monthNum);
+    openDrilldown(`Monthly Spend: ${colData?.label || "Month"} ${year}`, matching);
   };
 
   const handleScopeClick = (scopeKey) => {
@@ -165,14 +185,14 @@ export default function DashboardPage() {
     csvDownload(`${safeTitle}.csv`, (items || []).map((r) => ({
       "Asset Name": r.asset_name || "—",
       "Purchase Date": r.purchase_date || r.expiry_date || "",
-      "Invoice Number": r.it_invoices?.invoice_no || "",
+      "Invoice Number": r.it_invoices?.invoice_no || r.invoice_no || "",
       "Vendor Name": r.it_invoices?.it_vendors?.name || "",
       "Category": r.it_categories?.name || r.category_name || "",
       "Scope": r.scope === "global" ? "Global" : "Local",
       "Included in IT Budget?": isIncludedInBudget(r) ? "Yes (IT Budget)" : "No (Admin/Dept)",
       "Quantity": r.quantity || 1,
       "Unit Cost": r.unit_cost || r.line_total || 0,
-      "Line Total": r.line_total || 0,
+      "Line Total": r.line_total || (Number(r.quantity || 1) * Number(r.unit_cost || 0)),
       "Assigned Staff": r.staff_name || "",
       "Status": r.status || "in_use",
     })));
