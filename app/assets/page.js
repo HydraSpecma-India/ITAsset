@@ -140,6 +140,43 @@ export default function AssetsPage() {
     })));
   }
 
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingId, setSavingId] = useState(null);
+
+  function startInlineEdit(r) {
+    setEditingId(r.id);
+    setEditForm({
+      category_id: r.category_id || "",
+      scope: r.scope || "local",
+      staff_code: r.staff_code || "",
+      department: r.department || "",
+      warranty_end: r.warranty_end || "",
+      remarks: r.remarks || "",
+    });
+  }
+
+  async function saveInlineEdit(r) {
+    setSavingId(r.id);
+    const updates = {
+      category_id: editForm.category_id || null,
+      scope: editForm.scope || "local",
+      staff_code: editForm.staff_code || null,
+      department: editForm.department || null,
+      warranty_end: editForm.warranty_end || null,
+      remarks: editForm.remarks || null,
+    };
+
+    const { error } = await supabase.from("it_assets").update(updates).eq("id", r.id);
+    setSavingId(null);
+    if (error) {
+      alert("Error saving line: " + error.message);
+    } else {
+      setEditingId(null);
+      load();
+    }
+  }
+
   return (
     <Shell
       title="Asset Register"
@@ -224,7 +261,7 @@ export default function AssetsPage() {
         </div>
       </div>
 
-      <Card>
+      <Card title="Asset Register Lines" hint="Click '✏️ Edit' on any row for instant inline grid editing">
         {loading ? <div className="loading">Loading…</div> : filtered.length === 0 ? (
           <Empty>No assets match these filters.</Empty>
         ) : (
@@ -232,21 +269,110 @@ export default function AssetsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Asset</th><th>Category</th><th>Scope (Click to Toggle)</th><th>IT Budget? (Click to Toggle)</th><th>Assigned to</th>
-                  <th>Purchased</th><th className="num">Qty</th><th className="num">Value</th>
-                  <th>Next expiry</th><th>Status</th><th>Invoice</th>
+                  <th>Asset</th>
+                  <th>Category</th>
+                  <th>Scope</th>
+                  <th>IT Budget?</th>
+                  <th>Assigned to</th>
+                  <th>Staff Code</th>
+                  <th>Department</th>
+                  <th>Purchased</th>
+                  <th>Warranty End</th>
+                  <th>Remarks</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Value</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r) => {
-                  const dates = [
-                    ["Warranty", r.warranty_end], ["Licence", r.license_end],
-                    ["AMC", r.amc_end], ["Replace", r.replacement_due],
-                  ].filter(([, d]) => d).map(([k, d]) => ({ k, d, n: daysUntil(d) }))
-                   .sort((a, b) => a.n - b.n);
-                  const next = dates[0];
-                  const st = next ? expiryState(next.n) : null;
-                  const isItBudget = r.include_in_budget !== false;
+                  const isItBudget = isIncludedInBudget(r);
+                  const isEditing = editingId === r.id;
+                  const isSaving = savingId === r.id;
+
+                  if (isEditing) {
+                    return (
+                      <tr key={r.id} style={{ background: "rgba(255,204,0,0.08)" }}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{r.asset_name}</div>
+                          <div style={{ fontSize: 11, color: "var(--faint)" }}>
+                            {[r.asset_tag, r.model, r.serial_no].filter(Boolean).join(" · ") || "—"}
+                          </div>
+                        </td>
+                        <td>
+                          <select
+                            value={editForm.category_id}
+                            onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value })}
+                            style={{ padding: "4px 6px", fontSize: 12 }}
+                          >
+                            <option value="">— Category —</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={editForm.scope}
+                            onChange={(e) => setEditForm({ ...editForm, scope: e.target.value })}
+                            style={{ padding: "4px 6px", fontSize: 12 }}
+                          >
+                            <option value="local">Local</option>
+                            <option value="global">Global</option>
+                          </select>
+                        </td>
+                        <td>
+                          <span className={`pill ${isItBudget ? "gold" : "grey"}`}>
+                            {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
+                          </span>
+                        </td>
+                        <td>{r.staff_name || "—"}</td>
+                        <td>
+                          <input
+                            value={editForm.staff_code}
+                            onChange={(e) => setEditForm({ ...editForm, staff_code: e.target.value })}
+                            placeholder="Code"
+                            style={{ padding: "4px 6px", fontSize: 12, width: 85 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={editForm.department}
+                            onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                            placeholder="Department"
+                            style={{ padding: "4px 6px", fontSize: 12, width: 95 }}
+                          />
+                        </td>
+                        <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.purchase_date)}</td>
+                        <td>
+                          <input
+                            type="date"
+                            value={editForm.warranty_end}
+                            onChange={(e) => setEditForm({ ...editForm, warranty_end: e.target.value })}
+                            style={{ padding: "4px 6px", fontSize: 12, width: 130 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={editForm.remarks}
+                            onChange={(e) => setEditForm({ ...editForm, remarks: e.target.value })}
+                            placeholder="Remarks"
+                            style={{ padding: "4px 6px", fontSize: 12, width: 130 }}
+                          />
+                        </td>
+                        <td className="num mono">{r.quantity}</td>
+                        <td className="num mono" style={{ fontWeight: 600 }}>{money(r.line_total)}</td>
+                        <td>
+                          <div className="btn-row">
+                            <button className="btn sm" onClick={() => saveInlineEdit(r)} disabled={isSaving}>
+                              {isSaving ? "…" : "💾 Save"}
+                            </button>
+                            <button className="btn ghost sm" onClick={() => setEditingId(null)}>✕</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
 
                   return (
                     <tr key={r.id}>
@@ -256,7 +382,7 @@ export default function AssetsPage() {
                           {[r.asset_tag, r.model, r.serial_no].filter(Boolean).join(" · ") || "—"}
                         </div>
                       </td>
-                      <td style={{ color: "var(--muted)" }}>{r.it_categories?.name}</td>
+                      <td style={{ color: "var(--muted)" }}>{r.it_categories?.name || "—"}</td>
                       <td>
                         <button
                           className={`pill ${r.scope === "global" ? "blue" : "grey"}`}
@@ -272,37 +398,25 @@ export default function AssetsPage() {
                           className={`pill ${isItBudget ? "gold" : "grey"}`}
                           onClick={() => toggleBudgetInclude(r)}
                           style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
-                          title="Click to toggle whether this asset counts towards IT Budget or Admin/Dept Budget"
+                          title="Click to toggle IT Budget vs Admin/Dept Budget"
                         >
                           {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
                         </button>
                       </td>
-                      <td>
-                        <div>{r.staff_name || "—"}</div>
-                        <div style={{ fontSize: 11, color: "var(--faint)" }}>{[r.department, r.location].filter(Boolean).join(" · ")}</div>
-                      </td>
-                      <td className="mono">{dateStr(r.purchase_date)}</td>
+                      <td>{r.staff_name || "—"}</td>
+                      <td className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{r.staff_code || "—"}</td>
+                      <td style={{ color: "var(--muted)" }}>{r.department || "—"}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.purchase_date)}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.warranty_end)}</td>
+                      <td style={{ color: "var(--muted)", fontSize: 12 }}>{r.remarks || "—"}</td>
                       <td className="num mono">{r.quantity}</td>
                       <td className="num mono" style={{ opacity: isItBudget ? 1 : 0.65 }}>
                         {money(r.line_total)}
-                        {!isItBudget && <div style={{ fontSize: 10, color: "var(--faint)" }}>Excluded</div>}
                       </td>
                       <td>
-                        {next ? (
-                          <>
-                            <span className={`pill ${st.cls}`}>{st.label}</span>
-                            <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 3 }}>{next.k} · {dateStr(next.d)}</div>
-                          </>
-                        ) : <span style={{ color: "var(--faint)" }}>—</span>}
-                      </td>
-                      <td>
-                        <span className={`pill ${r.status === "disposed" ? "red" : r.status === "in_use" ? "green" : "grey"}`}>
-                          {ASSET_STATUS.find((s) => s.value === r.status)?.label}
-                        </span>
-                      </td>
-                      <td style={{ color: "var(--muted)", fontSize: 12 }}>
-                        {r.it_invoices?.invoice_no || "—"}
-                        <div style={{ fontSize: 11, color: "var(--faint)" }}>{r.it_invoices?.it_vendors?.name || ""}</div>
+                        <button className="btn ghost sm" onClick={() => startInlineEdit(r)}>
+                          ✏️ Edit
+                        </button>
                       </td>
                     </tr>
                   );
@@ -310,10 +424,10 @@ export default function AssetsPage() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan="6">Total</td>
+                  <td colSpan="10">Total</td>
                   <td className="num mono">{totals.qty}</td>
                   <td className="num mono">{money(totals.value)}</td>
-                  <td colSpan="3" />
+                  <td />
                 </tr>
               </tfoot>
             </table>

@@ -152,6 +152,44 @@ export default function InvoicesPage() {
     })));
   }
 
+  const [inlineEditingLineId, setInlineEditingLineId] = useState(null);
+  const [inlineEditForm, setInlineEditForm] = useState({});
+  const [inlineSavingLineId, setInlineSavingLineId] = useState(null);
+
+  function startDetailInlineEdit(l) {
+    setInlineEditingLineId(l.id);
+    setInlineEditForm({
+      category_id: l.category_id || "",
+      scope: l.scope || "local",
+      staff_code: l.staff_code || "",
+      department: l.department || "",
+      warranty_end: l.warranty_end || "",
+      remarks: l.remarks || "",
+    });
+  }
+
+  async function saveDetailInlineEdit(l) {
+    setInlineSavingLineId(l.id);
+    const updates = {
+      category_id: inlineEditForm.category_id || null,
+      scope: inlineEditForm.scope || "local",
+      staff_code: inlineEditForm.staff_code || null,
+      department: inlineEditForm.department || null,
+      warranty_end: inlineEditForm.warranty_end || null,
+      remarks: inlineEditForm.remarks || null,
+    };
+
+    const { error } = await supabase.from("it_assets").update(updates).eq("id", l.id);
+    setInlineSavingLineId(null);
+    if (error) {
+      alert("Error updating line: " + error.message);
+    } else {
+      setInlineEditingLineId(null);
+      if (detail?.inv) showDetail(detail.inv);
+      load();
+    }
+  }
+
   return (
     <Shell
       title="Invoices"
@@ -167,6 +205,9 @@ export default function InvoicesPage() {
                 </button>
               )}
               <button className="btn ghost sm" onClick={() => setImportOpen(true)} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
+                📄 Import PDF Invoice
+              </button>
+              <button className="btn ghost sm" onClick={() => setImportOpen(true)} style={{ borderColor: "var(--hs-silver)", color: "var(--text)" }}>
                 📥 Import Excel / CSV
               </button>
               <button className="btn sm" onClick={() => { setEditing({ invoice_no: "", invoice_date: todayISO(), vendor_id: "", po_number: "", currency: "INR", tax_amount: 0, other_charges: 0, notes: "", attachment_path: "", lines: [blankLine()] }); setOpen(true); }}>
@@ -212,7 +253,7 @@ export default function InvoicesPage() {
 
       <Card title={`${sanitizedInvoices.length} invoice${sanitizedInvoices.length === 1 ? "" : "s"}`} hint={`Total value ${money(total)}`}>
         {loading ? <div className="loading">Loading…</div> : sanitizedInvoices.length === 0 ? (
-          <Empty>No invoices recorded yet.{isAdmin ? " Use “New invoice” to add the first one." : ""}</Empty>
+          <Empty>No invoices recorded yet.{isAdmin ? " Use “New invoice” or “Import PDF Invoice” to add records." : ""}</Empty>
         ) : (
           <div className="table-wrap">
             <table>
@@ -236,8 +277,8 @@ export default function InvoicesPage() {
                     <td className="num mono" style={{ fontWeight: 600 }}>{money(i.invoice_total, i.currency)}</td>
                     <td>
                       <div className="btn-row">
-                        <button className="btn ghost sm" onClick={() => showDetail(i)}>View</button>
-                        {isAdmin && <button className="btn ghost sm" onClick={() => openEdit(i)}>Edit</button>}
+                        <button className="btn ghost sm" onClick={() => showDetail(i)}>View & Edit Lines</button>
+                        {isAdmin && <button className="btn ghost sm" onClick={() => openEdit(i)}>Edit Invoice</button>}
                         {isAdmin && <button className="btn danger sm" onClick={() => remove(i)}>Del</button>}
                       </div>
                     </td>
@@ -270,7 +311,7 @@ export default function InvoicesPage() {
       )}
 
       {detail && (
-        <Modal wide title={`Invoice ${detail.inv.invoice_no}`} onClose={() => setDetail(null)}>
+        <Modal wide title={`Invoice ${detail.inv.invoice_no} · Line Items`} onClose={() => setDetail(null)}>
           <div className="grid g4" style={{ marginBottom: 14 }}>
             <div><div className="kpi-label">Date</div><div className="mono">{dateStr(detail.inv.invoice_date)}</div></div>
             <div><div className="kpi-label">Vendor</div><div>{detail.inv.vendor_name || "—"}</div></div>
@@ -282,31 +323,131 @@ export default function InvoicesPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Asset</th><th>Category</th><th>Scope</th><th>Assigned to</th>
-                  <th className="num">Qty</th><th className="num">Unit</th><th className="num">Total</th>
-                  <th>Warranty</th><th>Licence</th><th>AMC</th><th>Replace</th>
+                  <th>Asset</th>
+                  <th>Category</th>
+                  <th>Scope</th>
+                  <th>Assigned Staff</th>
+                  <th>Staff Code</th>
+                  <th>Department</th>
+                  <th>Warranty End</th>
+                  <th>Remarks</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Total</th>
+                  {isAdmin && <th>Action</th>}
                 </tr>
               </thead>
               <tbody>
-                {detail.lines.map((l) => (
-                  <tr key={l.id}>
-                    <td>{l.asset_name}{l.asset_tag ? <div style={{ fontSize: 11, color: "var(--faint)" }}>{l.asset_tag}</div> : null}</td>
-                    <td style={{ color: "var(--muted)" }}>{l.it_categories?.name}</td>
-                    <td><span className={`pill ${l.scope === "global" ? "blue" : "grey"}`}>{l.scope === "global" ? "Global" : "Local"}</span></td>
-                    <td style={{ color: "var(--muted)" }}>{l.staff_name || "—"}</td>
-                    <td className="num mono">{l.quantity}</td>
-                    <td className="num mono">{money(l.unit_cost)}</td>
-                    <td className="num mono">{money(l.line_total)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{dateStr(l.warranty_end)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{dateStr(l.license_end)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{dateStr(l.amc_end)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{dateStr(l.replacement_due)}</td>
-                  </tr>
-                ))}
+                {detail.lines.map((l) => {
+                  const isEditingLine = inlineEditingLineId === l.id;
+                  const isSavingLine = inlineSavingLineId === l.id;
+
+                  if (isEditingLine) {
+                    return (
+                      <tr key={l.id} style={{ background: "rgba(255,204,0,0.08)" }}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{l.asset_name}</div>
+                          {l.asset_tag && <div style={{ fontSize: 11, color: "var(--faint)" }}>{l.asset_tag}</div>}
+                        </td>
+                        <td>
+                          <select
+                            value={inlineEditForm.category_id}
+                            onChange={(e) => setInlineEditForm({ ...inlineEditForm, category_id: e.target.value })}
+                            style={{ padding: "4px 6px", fontSize: 12 }}
+                          >
+                            <option value="">— Category —</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={inlineEditForm.scope}
+                            onChange={(e) => setInlineEditForm({ ...inlineEditForm, scope: e.target.value })}
+                            style={{ padding: "4px 6px", fontSize: 12 }}
+                          >
+                            <option value="local">Local</option>
+                            <option value="global">Global</option>
+                          </select>
+                        </td>
+                        <td>{l.staff_name || "—"}</td>
+                        <td>
+                          <input
+                            value={inlineEditForm.staff_code}
+                            onChange={(e) => setInlineEditForm({ ...inlineEditForm, staff_code: e.target.value })}
+                            placeholder="Code"
+                            style={{ padding: "4px 6px", fontSize: 12, width: 80 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={inlineEditForm.department}
+                            onChange={(e) => setInlineEditForm({ ...inlineEditForm, department: e.target.value })}
+                            placeholder="Dept"
+                            style={{ padding: "4px 6px", fontSize: 12, width: 90 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="date"
+                            value={inlineEditForm.warranty_end}
+                            onChange={(e) => setInlineEditForm({ ...inlineEditForm, warranty_end: e.target.value })}
+                            style={{ padding: "4px 6px", fontSize: 12, width: 130 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={inlineEditForm.remarks}
+                            onChange={(e) => setInlineEditForm({ ...inlineEditForm, remarks: e.target.value })}
+                            placeholder="Remarks"
+                            style={{ padding: "4px 6px", fontSize: 12, width: 120 }}
+                          />
+                        </td>
+                        <td className="num mono">{l.quantity}</td>
+                        <td className="num mono" style={{ fontWeight: 600 }}>{money(l.line_total)}</td>
+                        {isAdmin && (
+                          <td>
+                            <div className="btn-row">
+                              <button className="btn sm" onClick={() => saveDetailInlineEdit(l)} disabled={isSavingLine}>
+                                {isSavingLine ? "…" : "💾 Save"}
+                              </button>
+                              <button className="btn ghost sm" onClick={() => setInlineEditingLineId(null)}>✕</button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  }
+
+                  return (
+                    <tr key={l.id}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{l.asset_name}</div>
+                        {l.asset_tag && <div style={{ fontSize: 11, color: "var(--faint)" }}>{l.asset_tag}</div>}
+                      </td>
+                      <td style={{ color: "var(--muted)" }}>{l.it_categories?.name || "—"}</td>
+                      <td><span className={`pill ${l.scope === "global" ? "blue" : "grey"}`}>{l.scope === "global" ? "Global" : "Local"}</span></td>
+                      <td style={{ color: "var(--muted)" }}>{l.staff_name || "—"}</td>
+                      <td className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{l.staff_code || "—"}</td>
+                      <td style={{ color: "var(--muted)" }}>{l.department || "—"}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{dateStr(l.warranty_end)}</td>
+                      <td style={{ color: "var(--muted)", fontSize: 12 }}>{l.remarks || "—"}</td>
+                      <td className="num mono">{l.quantity}</td>
+                      <td className="num mono" style={{ fontWeight: 600 }}>{money(l.line_total)}</td>
+                      {isAdmin && (
+                        <td>
+                          <button className="btn ghost sm" onClick={() => startDetailInlineEdit(l)}>
+                            ✏️ Edit Line
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          {detail.inv.notes && <p style={{ color: "var(--muted)", fontSize: 13 }}>{detail.inv.notes}</p>}
+          {detail.inv.notes && <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 12 }}>{detail.inv.notes}</p>}
         </Modal>
       )}
     </Shell>
