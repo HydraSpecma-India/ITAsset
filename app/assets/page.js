@@ -5,8 +5,13 @@ import Shell from "@/components/Shell";
 import { Card, Empty, Kpi } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { money, dateStr, currentYear, csvDownload, ASSET_STATUS, daysUntil, expiryState } from "@/lib/format";
+import { useAuth } from "@/lib/session";
 
 export default function AssetsPage() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === "admin";
+  const isEmployee = profile?.role === "employee";
+
   const [rows, setRows] = useState([]);
   const [categories, setCategories] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -21,6 +26,10 @@ export default function AssetsPage() {
   const [sort, setSort] = useState("purchase_date");
 
   const [budgetFilter, setBudgetFilter] = useState("all");
+
+  const [bulkEdit, setBulkEdit] = useState(false);
+  const [bulkForms, setBulkForms] = useState({});
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,6 +100,10 @@ export default function AssetsPage() {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     let out = rows.filter((r) => {
+      if (isEmployee) {
+        const myName = (profile?.full_name || "").toLowerCase();
+        if ((r.staff_name || "").toLowerCase() !== myName) return false;
+      }
       if (year !== "all" && r.budget_year !== Number(year)) return false;
       if (month !== "all") {
         const m = (r.purchase_date || "").substring(5, 7);
@@ -115,7 +128,7 @@ export default function AssetsPage() {
       return String(b.purchase_date).localeCompare(String(a.purchase_date));
     });
     return out;
-  }, [rows, q, year, month, cat, scope, status, budgetFilter, sort]);
+  }, [rows, q, year, month, cat, scope, status, budgetFilter, sort, isEmployee, profile]);
 
   const totals = useMemo(() => {
     const t = { value: 0, qty: 0, local: 0, global: 0, itBudget: 0, excluded: 0 };
@@ -132,6 +145,55 @@ export default function AssetsPage() {
     });
     return t;
   }, [filtered]);
+
+  function startBulkGridEdit() {
+    const initial = {};
+    filtered.forEach((r) => {
+      initial[r.id] = {
+        category_id: r.category_id || "",
+        scope: r.scope || "local",
+        staff_name: r.staff_name || "",
+        department: r.department || "",
+        warranty_end: r.warranty_end || "",
+        remarks: r.remarks || "",
+      };
+    });
+    setBulkForms(initial);
+    setBulkEdit(true);
+  }
+
+  async function saveBulkGridEdit() {
+    setBulkSaving(true);
+    try {
+      for (const r of filtered) {
+        const f = bulkForms[r.id];
+        if (!f) continue;
+        if (
+          f.category_id !== r.category_id ||
+          f.scope !== r.scope ||
+          f.staff_name !== r.staff_name ||
+          f.department !== r.department ||
+          f.warranty_end !== r.warranty_end ||
+          f.remarks !== r.remarks
+        ) {
+          await supabase.from("it_assets").update({
+            category_id: f.category_id || null,
+            scope: f.scope || "local",
+            staff_name: f.staff_name || null,
+            department: f.department || null,
+            warranty_end: f.warranty_end || null,
+            remarks: f.remarks || null,
+          }).eq("id", r.id);
+        }
+      }
+      setBulkEdit(false);
+      load();
+    } catch (err) {
+      alert("Error saving bulk edits: " + err.message);
+    } finally {
+      setBulkSaving(false);
+    }
+  }
 
   function exportCsv() {
     csvDownload("asset-register.csv", filtered.map((r) => ({
@@ -194,47 +256,78 @@ export default function AssetsPage() {
 
   return (
     <Shell
-      title="Asset Register"
-      subtitle="Every purchased item with cost, owner and expiry dates"
-      actions={<button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>}
+      title={isEmployee ? "My Assigned Assets" : "Asset Register"}
+      subtitle={isEmployee ? `Assigned IT equipment details for ${profile?.full_name || "Employee"}` : "Every purchased item with cost, owner and expiry dates"}
+      actions={
+        <div style={{ display: "flex", gap: 10 }}>
+          {isAdmin && (
+            bulkEdit ? (
+              <>
+                <button className="btn sm" onClick={saveBulkGridEdit} disabled={bulkSaving}>
+                  {bulkSaving ? "Saving All…" : "💾 Save All Changes"}
+                </button>
+                <button className="btn ghost sm" onClick={() => setBulkEdit(false)}>✕ Cancel</button>
+              </>
+            ) : (
+              <button className="btn ghost sm" onClick={startBulkGridEdit} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
+                ⚡ Bulk Grid Edit Mode
+              </button>
+            )
+          )}
+          <button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>
+        </div>
+      }
     >
-      <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Kpi label="Items shown" value={filtered.length} foot={`${totals.qty} units`} />
-        <Kpi label="Total Asset Value" value={money(totals.value)} tone="gold" />
-        <Kpi label="IT Budget Spend" value={money(totals.itBudget)} foot="Counted in IT Budget" />
-        <Kpi label="Admin / Dept Spend" value={money(totals.excluded)} foot="Excluded from IT Budget" />
-      </div>
+      {!isEmployee && (
+        <div className="grid g4" style={{ marginBottom: 16 }}>
+          <Kpi label="Items shown" value={filtered.length} foot={`${totals.qty} units`} />
+          <Kpi label="Total Asset Value" value={money(totals.value)} tone="gold" />
+          <Kpi label="IT Budget Spend" value={money(totals.itBudget)} foot="Counted in IT Budget" />
+          <Kpi label="Admin / Dept Spend" value={money(totals.excluded)} foot="Excluded from IT Budget" />
+        </div>
+      )}
+
+      {isEmployee && (
+        <div className="grid g2" style={{ marginBottom: 16 }}>
+          <Kpi label="Assets Assigned to Me" value={filtered.length} foot={`${totals.qty} total units`} tone="gold" />
+          <Kpi label="Assigned User" value={profile?.full_name || "Employee"} foot={profile?.email || ""} />
+        </div>
+      )}
 
       <div className="toolbar">
         <div className="field" style={{ minWidth: 240, flex: 1 }}>
           <span className="field-label">Search</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Asset, serial, staff, invoice, vendor…" />
         </div>
-        <div className="field">
-          <span className="field-label">Year</span>
-          <select value={year} onChange={(e) => setYear(e.target.value)}>
-            <option value="all">All years</option>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <span className="field-label">Month</span>
-          <select value={month} onChange={(e) => setMonth(e.target.value)}>
-            <option value="all">All months</option>
-            <option value="01">January</option>
-            <option value="02">February</option>
-            <option value="03">March</option>
-            <option value="04">April</option>
-            <option value="05">May</option>
-            <option value="06">June</option>
-            <option value="07">July</option>
-            <option value="08">August</option>
-            <option value="09">September</option>
-            <option value="10">October</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
-        </div>
+        {!isEmployee && (
+          <>
+            <div className="field">
+              <span className="field-label">Year</span>
+              <select value={year} onChange={(e) => setYear(e.target.value)}>
+                <option value="all">All years</option>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <span className="field-label">Month</span>
+              <select value={month} onChange={(e) => setMonth(e.target.value)}>
+                <option value="all">All months</option>
+                <option value="01">January</option>
+                <option value="02">February</option>
+                <option value="03">March</option>
+                <option value="04">April</option>
+                <option value="05">May</option>
+                <option value="06">June</option>
+                <option value="07">July</option>
+                <option value="08">August</option>
+                <option value="09">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+            </div>
+          </>
+        )}
         <div className="field">
           <span className="field-label">Category</span>
           <select value={cat} onChange={(e) => setCat(e.target.value)}>
@@ -242,22 +335,26 @@ export default function AssetsPage() {
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <div className="field">
-          <span className="field-label">Scope</span>
-          <select value={scope} onChange={(e) => setScope(e.target.value)}>
-            <option value="all">Local + Global</option>
-            <option value="local">Local staff</option>
-            <option value="global">Global staff</option>
-          </select>
-        </div>
-        <div className="field">
-          <span className="field-label">IT Budget?</span>
-          <select value={budgetFilter} onChange={(e) => setBudgetFilter(e.target.value)}>
-            <option value="all">All (IT + Admin)</option>
-            <option value="it_only">IT Budget Only</option>
-            <option value="excluded_only">Admin/Dept Excluded Only</option>
-          </select>
-        </div>
+        {!isEmployee && (
+          <>
+            <div className="field">
+              <span className="field-label">Scope</span>
+              <select value={scope} onChange={(e) => setScope(e.target.value)}>
+                <option value="all">Local + Global</option>
+                <option value="local">Local staff</option>
+                <option value="global">Global staff</option>
+              </select>
+            </div>
+            <div className="field">
+              <span className="field-label">IT Budget?</span>
+              <select value={budgetFilter} onChange={(e) => setBudgetFilter(e.target.value)}>
+                <option value="all">All (IT + Admin)</option>
+                <option value="it_only">IT Budget Only</option>
+                <option value="excluded_only">Admin/Dept Excluded Only</option>
+              </select>
+            </div>
+          </>
+        )}
         <div className="field">
           <span className="field-label">Status</span>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -269,16 +366,16 @@ export default function AssetsPage() {
           <span className="field-label">Sort by</span>
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="purchase_date">Newest first</option>
-            <option value="cost">Highest cost</option>
+            {!isEmployee && <option value="cost">Highest cost</option>}
             <option value="name">Asset name</option>
             <option value="staff">Staff name</option>
           </select>
         </div>
       </div>
 
-      <Card title="Asset Register Lines" hint="Click '✏️ Edit' on any row for instant inline grid editing">
+      <Card title={isEmployee ? "My Assigned Assets" : "Asset Register Lines"} hint={bulkEdit ? "⚡ Bulk Grid Edit Mode ACTIVE: Edit fields directly in table cells below" : "Click '✏️ Edit' on any row for instant inline grid editing"}>
         {loading ? <div className="loading">Loading…</div> : filtered.length === 0 ? (
-          <Empty>No assets match these filters.</Empty>
+          <Empty>{isEmployee ? "No assets are currently assigned to your account." : "No assets match these filters."}</Empty>
         ) : (
           <div className="table-wrap">
             <table>
@@ -286,16 +383,16 @@ export default function AssetsPage() {
                 <tr>
                   <th>Asset</th>
                   <th>Category</th>
-                  <th>Scope</th>
-                  <th>IT Budget?</th>
+                  {!isEmployee && <th>Scope</th>}
+                  {!isEmployee && <th>IT Budget?</th>}
                   <th>Staff Name</th>
                   <th>Department</th>
                   <th>Purchased</th>
-                  <th>Warranty End</th>
+                  {!isEmployee && <th>Warranty End</th>}
                   <th>Remarks</th>
                   <th className="num">Qty</th>
-                  <th className="num">Value</th>
-                  <th>Action</th>
+                  {!isEmployee && <th className="num">Value</th>}
+                  {isAdmin && <th>Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -303,6 +400,102 @@ export default function AssetsPage() {
                   const isItBudget = isIncludedInBudget(r);
                   const isEditing = editingId === r.id;
                   const isSaving = savingId === r.id;
+                  const bForm = bulkForms[r.id] || {};
+
+                  if (bulkEdit) {
+                    return (
+                      <tr key={r.id} style={{ background: "rgba(255,204,0,0.06)" }}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{r.asset_name}</div>
+                          <div style={{ fontSize: 11, color: "var(--faint)" }}>
+                            {[r.asset_tag, r.model, r.serial_no].filter(Boolean).join(" · ") || "—"}
+                          </div>
+                        </td>
+                        <td>
+                          <select
+                            value={bForm.category_id || ""}
+                            onChange={(e) => setBulkForms({ ...bulkForms, [r.id]: { ...bForm, category_id: e.target.value } })}
+                            style={{ padding: "4px 6px", fontSize: 12 }}
+                          >
+                            <option value="">— Category —</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={bForm.scope || "local"}
+                            onChange={(e) => setBulkForms({ ...bulkForms, [r.id]: { ...bForm, scope: e.target.value } })}
+                            style={{ padding: "4px 6px", fontSize: 12 }}
+                          >
+                            <option value="local">Local</option>
+                            <option value="global">Global</option>
+                          </select>
+                        </td>
+                        <td>
+                          <span className={`pill ${isItBudget ? "gold" : "grey"}`}>
+                            {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
+                          </span>
+                        </td>
+                        <td>
+                          <select
+                            value={bForm.staff_name || ""}
+                            onChange={(e) => {
+                              const empName = e.target.value;
+                              const matched = employees.find((emp) => emp.full_name === empName);
+                              setBulkForms({
+                                ...bulkForms,
+                                [r.id]: {
+                                  ...bForm,
+                                  staff_name: empName,
+                                  department: matched ? matched.department : bForm.department,
+                                },
+                              });
+                            }}
+                            style={{ padding: "4px 6px", fontSize: 12, minWidth: 140 }}
+                          >
+                            <option value="">— Select Staff —</option>
+                            {employees.map((emp) => (
+                              <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            value={bForm.department || ""}
+                            onChange={(e) => setBulkForms({ ...bulkForms, [r.id]: { ...bForm, department: e.target.value } })}
+                            style={{ padding: "4px 6px", fontSize: 12, minWidth: 120 }}
+                          >
+                            <option value="">— Select Dept —</option>
+                            {departments.map((d) => (
+                              <option key={d.id} value={d.name}>{d.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.purchase_date)}</td>
+                        <td>
+                          <input
+                            type="date"
+                            value={bForm.warranty_end || ""}
+                            onChange={(e) => setBulkForms({ ...bulkForms, [r.id]: { ...bForm, warranty_end: e.target.value } })}
+                            style={{ padding: "4px 6px", fontSize: 12, width: 130 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={bForm.remarks || ""}
+                            onChange={(e) => setBulkForms({ ...bulkForms, [r.id]: { ...bForm, remarks: e.target.value } })}
+                            placeholder="Remarks"
+                            style={{ padding: "4px 6px", fontSize: 12, width: 120 }}
+                          />
+                        </td>
+                        <td className="num mono">{r.quantity}</td>
+                        <td className="num mono" style={{ fontWeight: 600 }}>{money(r.line_total)}</td>
+                        <td>—</td>
+                      </tr>
+                    );
+                  }
 
                   if (isEditing) {
                     return (
@@ -404,50 +597,58 @@ export default function AssetsPage() {
                         </div>
                       </td>
                       <td style={{ color: "var(--muted)" }}>{r.it_categories?.name || "—"}</td>
-                      <td>
-                        <button
-                          className={`pill ${r.scope === "global" ? "blue" : "grey"}`}
-                          onClick={() => toggleScope(r)}
-                          style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
-                          title="Click to toggle between Local and Global scope"
-                        >
-                          {r.scope === "global" ? "Global ⇄" : "Local ⇄"}
-                        </button>
-                      </td>
-                      <td>
-                        <button
-                          className={`pill ${isItBudget ? "gold" : "grey"}`}
-                          onClick={() => toggleBudgetInclude(r)}
-                          style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
-                          title="Click to toggle IT Budget vs Admin/Dept Budget"
-                        >
-                          {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
-                        </button>
-                      </td>
+                      {!isEmployee && (
+                        <td>
+                          <button
+                            className={`pill ${r.scope === "global" ? "blue" : "grey"}`}
+                            onClick={() => toggleScope(r)}
+                            style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
+                            title="Click to toggle between Local and Global scope"
+                          >
+                            {r.scope === "global" ? "Global ⇄" : "Local ⇄"}
+                          </button>
+                        </td>
+                      )}
+                      {!isEmployee && (
+                        <td>
+                          <button
+                            className={`pill ${isItBudget ? "gold" : "grey"}`}
+                            onClick={() => toggleBudgetInclude(r)}
+                            style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
+                            title="Click to toggle IT Budget vs Admin/Dept Budget"
+                          >
+                            {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
+                          </button>
+                        </td>
+                      )}
                       <td style={{ fontWeight: 600 }}>{r.staff_name || "—"}</td>
                       <td><span className="pill grey">{r.department || "—"}</span></td>
                       <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.purchase_date)}</td>
-                      <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.warranty_end)}</td>
+                      {!isEmployee && <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.warranty_end)}</td>}
                       <td style={{ color: "var(--muted)", fontSize: 12 }}>{r.remarks || "—"}</td>
                       <td className="num mono">{r.quantity}</td>
-                      <td className="num mono" style={{ opacity: isItBudget ? 1 : 0.65 }}>
-                        {money(r.line_total)}
-                      </td>
-                      <td>
-                        <button className="btn ghost sm" onClick={() => startInlineEdit(r)}>
-                          ✏️ Edit
-                        </button>
-                      </td>
+                      {!isEmployee && (
+                        <td className="num mono" style={{ opacity: isItBudget ? 1 : 0.65 }}>
+                          {money(r.line_total)}
+                        </td>
+                      )}
+                      {isAdmin && (
+                        <td>
+                          <button className="btn ghost sm" onClick={() => startInlineEdit(r)}>
+                            ✏️ Edit
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan="9">Total</td>
+                  <td colSpan={isEmployee ? 6 : 9}>Total</td>
                   <td className="num mono">{totals.qty}</td>
-                  <td className="num mono">{money(totals.value)}</td>
-                  <td />
+                  {!isEmployee && <td className="num mono">{money(totals.value)}</td>}
+                  {isAdmin && <td />}
                 </tr>
               </tfoot>
             </table>

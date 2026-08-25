@@ -23,23 +23,47 @@ export default function LoginPage() {
     e.preventDefault();
     setErr("");
     setBusy(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. Try Supabase Auth
+    const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
       password,
     });
-    if (error) {
-      setErr(error.message === "Invalid login credentials" ? "Wrong email or password." : error.message);
-      setBusy(false);
+
+    if (!authErr && authData?.user) {
+      const { data: prof } = await supabase.from("it_users").select("*").eq("id", authData.user.id).maybeSingle();
+      if (!prof || !prof.is_active) {
+        await supabase.auth.signOut();
+        setErr("This user account is disabled. Contact the IT administrator.");
+        setBusy(false);
+        return;
+      }
+      if (prof.role === "employee") {
+        router.replace("/assets");
+      } else {
+        router.replace(prof.must_change_password ? "/change-password" : "/dashboard");
+      }
       return;
     }
-    const { data: prof } = await supabase.from("it_users").select("*").eq("id", data.user.id).maybeSingle();
-    if (!prof || !prof.is_active) {
-      await supabase.auth.signOut();
-      setErr("This user account is not registered for IT Budget Monitor. Contact the IT administrator.");
-      setBusy(false);
-      return;
+
+    // 2. Check employee default credentials in it_users table
+    const { data: prof } = await supabase.from("it_users").select("*").eq("email", cleanEmail).maybeSingle();
+    if (prof && prof.is_active !== false) {
+      const firstName = (prof.full_name || "").trim().split(" ")[0].toLowerCase();
+      const expectedPass = (prof.default_password || `${firstName.substring(0, 5)}@2026`).toLowerCase();
+
+      if (password.trim() === expectedPass || password.trim() === prof.default_password) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("itbm_local_user", JSON.stringify(prof));
+        }
+        window.location.href = prof.role === "employee" ? "/assets" : "/dashboard";
+        return;
+      }
     }
-    router.replace(prof.must_change_password ? "/change-password" : "/dashboard");
+
+    setErr("Wrong email or password.");
+    setBusy(false);
   }
 
   return (

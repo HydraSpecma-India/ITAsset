@@ -53,6 +53,66 @@ export default function EmployeesPage() {
     });
   }, [employees, q, deptFilter]);
 
+  const [bulkEdit, setBulkEdit] = useState(false);
+  const [bulkForms, setBulkForms] = useState({});
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  async function toggleEmpStatus(e) {
+    const nextStatus = !e.is_active;
+    setEmployees((prev) => prev.map((item) => (item.id === e.id ? { ...item, is_active: nextStatus } : item)));
+    
+    const { error } = await supabase.from("it_employees").update({ is_active: nextStatus }).eq("id", e.id);
+    if (e.email) {
+      await supabase.from("it_users").update({ is_active: nextStatus }).eq("email", e.email.trim().toLowerCase());
+    }
+
+    if (error) {
+      alert("Error updating status: " + error.message);
+      load();
+    }
+  }
+
+  function startBulkEdit() {
+    const initial = {};
+    employees.forEach((e) => {
+      initial[e.id] = {
+        full_name: e.full_name || "",
+        department: e.department || "",
+        job_title: e.job_title || "",
+        email: e.email || "",
+      };
+    });
+    setBulkForms(initial);
+    setBulkEdit(true);
+  }
+
+  async function saveBulkEdit() {
+    setBulkSaving(true);
+    try {
+      for (const e of employees) {
+        const f = bulkForms[e.id];
+        if (!f) continue;
+        if (
+          f.full_name !== e.full_name ||
+          f.department !== e.department ||
+          f.job_title !== e.job_title ||
+          f.email !== e.email
+        ) {
+          await supabase.from("it_employees").update(f).eq("id", e.id);
+          if (f.email) {
+            await supabase.from("it_users").update({ full_name: f.full_name }).eq("email", f.email.trim().toLowerCase());
+          }
+        }
+      }
+      setBulkEdit(false);
+      load();
+    } catch (err) {
+      alert("Error during bulk edit: " + err.message);
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
   function openNewEmp() {
     setEditingEmp(null);
     setEmpForm({
@@ -83,9 +143,30 @@ export default function EmployeesPage() {
       if (editingEmp) {
         const { error } = await supabase.from("it_employees").update(empForm).eq("id", editingEmp.id);
         if (error) throw error;
+        if (empForm.email) {
+          await supabase.from("it_users").update({
+            full_name: empForm.full_name,
+            is_active: empForm.is_active,
+          }).eq("email", empForm.email.trim().toLowerCase());
+        }
       } else {
         const { error } = await supabase.from("it_employees").insert([empForm]);
         if (error) throw error;
+
+        // Auto-create user login credential with default password <first5>@2026
+        if (empForm.email && empForm.email.trim()) {
+          const firstName = empForm.full_name.trim().split(" ")[0].toLowerCase();
+          const defaultPass = `${firstName.substring(0, 5)}@2026`;
+
+          await supabase.from("it_users").upsert([{
+            email: empForm.email.trim().toLowerCase(),
+            full_name: empForm.full_name.trim(),
+            role: "employee",
+            is_active: empForm.is_active !== false,
+            must_change_password: false,
+            default_password: defaultPass,
+          }], { onConflict: "email" });
+        }
       }
       setEmpModalOpen(false);
       load();
@@ -99,6 +180,9 @@ export default function EmployeesPage() {
   async function deleteEmp(e) {
     if (!confirm(`Delete employee ${e.full_name}?`)) return;
     await supabase.from("it_employees").delete().eq("id", e.id);
+    if (e.email) {
+      await supabase.from("it_users").delete().eq("email", e.email.trim().toLowerCase());
+    }
     load();
   }
 
@@ -132,11 +216,23 @@ export default function EmployeesPage() {
   return (
     <Shell
       title="Employees & Departments"
-      subtitle="Manage organization staff members and department choices for asset assignment"
+      subtitle="Manage organization staff members, login credentials, and department choices"
       actions={
         <div style={{ display: "flex", gap: 10 }}>
           {isAdmin && (
             <>
+              {bulkEdit ? (
+                <>
+                  <button className="btn sm" onClick={saveBulkEdit} disabled={bulkSaving}>
+                    {bulkSaving ? "Saving All…" : "💾 Save All Changes"}
+                  </button>
+                  <button className="btn ghost sm" onClick={() => setBulkEdit(false)}>✕ Cancel</button>
+                </>
+              ) : (
+                <button className="btn ghost sm" onClick={startBulkEdit} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
+                  ⚡ Bulk Grid Edit Mode
+                </button>
+              )}
               <button className="btn ghost sm" onClick={openNewDept}>+ New Department</button>
               <button className="btn sm" onClick={openNewEmp}>+ New Employee</button>
             </>
@@ -145,10 +241,10 @@ export default function EmployeesPage() {
       }
     >
       <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Kpi label="Total Employees" value={employees.length} foot={`${employees.filter((e) => e.is_active).length} active`} tone="gold" />
-        <Kpi label="Departments" value={departments.length} foot={`${departments.filter((d) => d.is_active).length} active`} />
+        <Kpi label="Total Employees" value={employees.length} foot={`${employees.filter((e) => e.is_active !== false).length} active`} tone="gold" />
+        <Kpi label="Departments" value={departments.length} foot={`${departments.filter((d) => d.is_active !== false).length} active`} />
         <Kpi label="Assigned Depts" value={new Set(employees.map((e) => e.department).filter(Boolean)).size} foot="Active staff departments" />
-        <Kpi label="Company" value="HydraSpecma" foot="India Operations" />
+        <Kpi label="Default Password Rule" value="first5@2026" foot="e.g. anand@2026" />
       </div>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 16, borderBottom: "1px solid var(--hs-charcoal)", paddingBottom: 10 }}>
@@ -186,7 +282,7 @@ export default function EmployeesPage() {
             </div>
           </div>
 
-          <Card title={`${filteredEmployees.length} Employee${filteredEmployees.length === 1 ? "" : "s"}`}>
+          <Card title={`${filteredEmployees.length} Employee${filteredEmployees.length === 1 ? "" : "s"}`} hint={bulkEdit ? "⚡ Bulk Grid Edit Mode ACTIVE: Edit fields directly in table cells below" : "Click status pill to toggle Active / Inactive"}>
             {loading ? <div className="loading">Loading…</div> : filteredEmployees.length === 0 ? (
               <Empty>No employees found.</Empty>
             ) : (
@@ -197,35 +293,97 @@ export default function EmployeesPage() {
                       <th>Full Name</th>
                       <th>Department</th>
                       <th>Job Title</th>
-                      <th>Email</th>
-                      <th>Location</th>
-                      <th>Status</th>
+                      <th>Email (Login ID)</th>
+                      <th>Default Password</th>
+                      <th>Status (Click to Toggle)</th>
                       {isAdmin && <th>Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredEmployees.map((e) => (
-                      <tr key={e.id}>
-                        <td style={{ fontWeight: 600 }}>{e.full_name}</td>
-                        <td><span className="pill gold">{e.department || "—"}</span></td>
-                        <td style={{ color: "var(--muted)" }}>{e.job_title || "—"}</td>
-                        <td className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{e.email || "—"}</td>
-                        <td style={{ color: "var(--muted)" }}>{e.location || "—"}</td>
-                        <td>
-                          <span className={`pill ${e.is_active ? "green" : "red"}`}>
-                            {e.is_active ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                        {isAdmin && (
+                    {filteredEmployees.map((e) => {
+                      const firstName = (e.full_name || "").trim().split(" ")[0].toLowerCase();
+                      const defaultPass = `${firstName.substring(0, 5)}@2026`;
+                      const bForm = bulkForms[e.id] || {};
+
+                      if (bulkEdit) {
+                        return (
+                          <tr key={e.id} style={{ background: "rgba(255,204,0,0.06)" }}>
+                            <td>
+                              <input
+                                value={bForm.full_name || ""}
+                                onChange={(evt) => setBulkForms({ ...bulkForms, [e.id]: { ...bForm, full_name: evt.target.value } })}
+                                style={{ padding: "4px 6px", fontSize: 12, fontWeight: 600 }}
+                              />
+                            </td>
+                            <td>
+                              <select
+                                value={bForm.department || ""}
+                                onChange={(evt) => setBulkForms({ ...bulkForms, [e.id]: { ...bForm, department: evt.target.value } })}
+                                style={{ padding: "4px 6px", fontSize: 12 }}
+                              >
+                                <option value="">— Select Dept —</option>
+                                {departments.map((d) => (
+                                  <option key={d.id} value={d.name}>{d.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input
+                                value={bForm.job_title || ""}
+                                onChange={(evt) => setBulkForms({ ...bulkForms, [e.id]: { ...bForm, job_title: evt.target.value } })}
+                                style={{ padding: "4px 6px", fontSize: 12 }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                value={bForm.email || ""}
+                                onChange={(evt) => setBulkForms({ ...bulkForms, [e.id]: { ...bForm, email: evt.target.value } })}
+                                style={{ padding: "4px 6px", fontSize: 12, width: 220 }}
+                              />
+                            </td>
+                            <td className="mono" style={{ fontSize: 12, color: "var(--gold)" }}>{defaultPass}</td>
+                            <td>
+                              <button
+                                className={`pill ${e.is_active !== false ? "green" : "red"}`}
+                                onClick={() => toggleEmpStatus(e)}
+                                style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
+                              >
+                                {e.is_active !== false ? "Active ⇄" : "Inactive ⇄"}
+                              </button>
+                            </td>
+                            <td>—</td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <tr key={e.id}>
+                          <td style={{ fontWeight: 600 }}>{e.full_name}</td>
+                          <td><span className="pill gold">{e.department || "—"}</span></td>
+                          <td style={{ color: "var(--muted)" }}>{e.job_title || "—"}</td>
+                          <td className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{e.email || "—"}</td>
+                          <td className="mono" style={{ fontSize: 12, color: "var(--gold)", fontWeight: 600 }}>{defaultPass}</td>
                           <td>
-                            <div className="btn-row">
-                              <button className="btn ghost sm" onClick={() => openEditEmp(e)}>Edit</button>
-                              <button className="btn danger sm" onClick={() => deleteEmp(e)}>Del</button>
-                            </div>
+                            <button
+                              className={`pill ${e.is_active !== false ? "green" : "red"}`}
+                              onClick={() => toggleEmpStatus(e)}
+                              style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
+                              title="Click to toggle Active / Inactive status"
+                            >
+                              {e.is_active !== false ? "Active ⇄" : "Inactive ⇄"}
+                            </button>
                           </td>
-                        )}
-                      </tr>
-                    ))}
+                          {isAdmin && (
+                            <td>
+                              <div className="btn-row">
+                                <button className="btn ghost sm" onClick={() => openEditEmp(e)}>Edit</button>
+                                <button className="btn danger sm" onClick={() => deleteEmp(e)}>Del</button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

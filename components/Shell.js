@@ -7,15 +7,15 @@ import { useAuth } from "@/lib/session";
 
 const NAV = [
   { group: "Overview", items: [
-    { href: "/dashboard", label: "Dashboard", ico: "◈" },
-    { href: "/budgets", label: "Budget vs Actual", ico: "▤" },
-    { href: "/expiry", label: "Expiry & Renewals", ico: "⏱" },
-    { href: "/planning", label: "Next Year Budget", ico: "◇" },
+    { href: "/dashboard", label: "Dashboard", ico: "◈", hideForEmployee: true },
+    { href: "/budgets", label: "Budget vs Actual", ico: "▤", hideForEmployee: true },
+    { href: "/expiry", label: "Expiry & Renewals", ico: "⏱", hideForEmployee: true },
+    { href: "/planning", label: "Next Year Budget", ico: "◇", hideForEmployee: true },
   ]},
   { group: "Records", items: [
-    { href: "/invoices", label: "Invoices", ico: "▦" },
+    { href: "/invoices", label: "Invoices", ico: "▦", hideForEmployee: true },
     { href: "/assets", label: "Asset Register", ico: "▧" },
-    { href: "/employees", label: "Employees & Depts", ico: "👥" },
+    { href: "/employees", label: "Employees & Depts", ico: "👥", hideForEmployee: true },
   ]},
   { group: "Setup", items: [
     { href: "/masters", label: "Categories & Vendors", ico: "⚙", adminOnly: true },
@@ -52,14 +52,18 @@ export default function Shell({ title, subtitle, actions, children }) {
     if (!user) router.replace("/login");
     else if (user && !profile) signOut();
     else if (profile && profile.must_change_password) router.replace("/change-password");
-    else if (profile && !profile.is_active) signOut();
-  }, [loading, user, profile, router, signOut]);
+    else if (profile && profile.is_active === false) signOut();
+    else if (profile && profile.role === "employee" && pathname !== "/assets") {
+      router.replace("/assets");
+    }
+  }, [loading, user, profile, router, signOut, pathname]);
 
   if (loading || !user || !profile || profile.must_change_password) {
     return <div className="loading">Loading…</div>;
   }
 
   const isAdmin = profile.role === "admin";
+  const isEmployee = profile.role === "employee";
   const initials = (profile.full_name || profile.email || "?")
     .split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
@@ -79,17 +83,20 @@ export default function Shell({ title, subtitle, actions, children }) {
         </div>
 
         {NAV.map((g) => {
-          const items = g.items.filter((i) => !i.adminOnly || isAdmin);
+          const items = g.items.filter((i) => (!i.adminOnly || isAdmin) && (!i.hideForEmployee || !isEmployee));
           if (!items.length) return null;
           return (
             <div key={g.group}>
               <div className="nav-label">{g.group}</div>
-              {items.map((i) => (
-                <Link key={i.href} href={i.href} className={`nav-item ${pathname === i.href ? "active" : ""}`}>
-                  <span className="nav-ico">{i.ico}</span>
-                  {i.label}
-                </Link>
-              ))}
+              {items.map((i) => {
+                const labelText = isEmployee && i.href === "/assets" ? "My Assets" : i.label;
+                return (
+                  <Link key={i.href} href={i.href} className={`nav-item ${pathname === i.href ? "active" : ""}`}>
+                    <span className="nav-ico">{i.ico}</span>
+                    {labelText}
+                  </Link>
+                );
+              })}
             </div>
           );
         })}
