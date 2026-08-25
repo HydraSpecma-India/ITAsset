@@ -792,7 +792,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           asset_name: l.asset_name,
           category_id: l.category_id || defaultCatId,
           scope: l.scope || "local",
-          item_type: l.item_type || "hardware",
+          item_type: l.include_in_budget === false ? "non_budget" : (l.item_type || "hardware"),
           quantity: l.quantity,
           unit_cost: l.unit_cost,
           purchase_date: l.purchase_date,

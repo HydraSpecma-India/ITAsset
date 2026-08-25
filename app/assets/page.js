@@ -37,6 +37,7 @@ export default function AssetsPage() {
   const years = useMemo(() => [...new Set(rows.map((r) => r.budget_year))].sort((a, b) => b - a), [rows]);
 
   function isIncludedInBudget(r) {
+    if (r.item_type === "non_budget") return false;
     if (r.remarks && r.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
     return r.include_in_budget !== false;
   }
@@ -44,20 +45,31 @@ export default function AssetsPage() {
   async function toggleScope(r) {
     const nextScope = r.scope === "global" ? "local" : "global";
     setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, scope: nextScope } : item)));
-    await supabase.from("it_assets").update({ scope: nextScope }).eq("id", r.id);
+    const { error } = await supabase.from("it_assets").update({ scope: nextScope }).eq("id", r.id);
+    if (error) {
+      alert("Database error updating scope: " + error.message);
+      load();
+    }
   }
 
   async function toggleBudgetInclude(r) {
     const current = isIncludedInBudget(r);
     const nextVal = !current;
-    let nextRemarks = r.remarks || "";
+    let nextRemarks = (r.remarks || "").trim();
     if (nextVal) {
-      nextRemarks = nextRemarks.replace("[EXCLUDED_FROM_BUDGET] ", "").replace("[EXCLUDED_FROM_BUDGET]", "");
+      nextRemarks = nextRemarks.replace(/\[EXCLUDED_FROM_BUDGET\]/g, "").trim();
     } else if (!nextRemarks.includes("[EXCLUDED_FROM_BUDGET]")) {
-      nextRemarks = "[EXCLUDED_FROM_BUDGET] " + nextRemarks;
+      nextRemarks = (`[EXCLUDED_FROM_BUDGET] ${nextRemarks}`).trim();
     }
-    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal, remarks: nextRemarks } : item)));
-    await supabase.from("it_assets").update({ remarks: nextRemarks }).eq("id", r.id);
+    const nextItemType = nextVal ? (r.item_type === "non_budget" ? "hardware" : r.item_type) : "non_budget";
+
+    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal, remarks: nextRemarks, item_type: nextItemType } : item)));
+    
+    const { error } = await supabase.from("it_assets").update({ remarks: nextRemarks, item_type: nextItemType }).eq("id", r.id);
+    if (error) {
+      alert("Database error updating budget inclusion: " + error.message);
+      load();
+    }
   }
 
   const filtered = useMemo(() => {
