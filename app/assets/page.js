@@ -103,7 +103,7 @@ export default function AssetsPage() {
       if (isEmployee) {
         const myName = (profile?.full_name || "").trim().toLowerCase();
         const myEmail = (profile?.email || "").trim().toLowerCase();
-        const nameTokens = myName.split(" ").filter((t) => t.length >= 3);
+        const myCode = (profile?.staff_code || "").trim().toLowerCase();
 
         const staff = (r.staff_name || "").trim().toLowerCase();
         const staffCode = (r.staff_code || "").trim().toLowerCase();
@@ -113,9 +113,7 @@ export default function AssetsPage() {
         const isMatch =
           staff === myName ||
           staff === myEmail ||
-          (profile?.staff_code && staffCode === profile.staff_code.trim().toLowerCase()) ||
-          nameTokens.some((tok) => staff.includes(tok)) ||
-          (staff.length >= 3 && (myName.includes(staff) || myEmail.includes(staff)));
+          (myCode && staffCode === myCode);
 
         if (!isMatch) return false;
       }
