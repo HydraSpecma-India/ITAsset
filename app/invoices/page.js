@@ -39,6 +39,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices] = useState([]);
   const [categories, setCategories] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [month, setMonth] = useState("all");
@@ -51,101 +53,81 @@ export default function InvoicesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [i, c, v] = await Promise.all([
+    const [i, c, v, emp, dept] = await Promise.all([
       supabase.from("v_it_invoice_totals").select("*").order("invoice_date", { ascending: false }),
       supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order"),
       supabase.from("it_vendors").select("*").eq("is_active", true).order("name"),
+      supabase.from("it_employees").select("*").eq("is_active", true).order("full_name"),
+      supabase.from("it_departments").select("*").eq("is_active", true).order("name"),
     ]);
     setInvoices(i.data || []);
     setCategories(c.data || []);
     setVendors(v.data || []);
+    setEmployees(emp.data || []);
+    setDepartments(dept.data || []);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = useMemo(() => {
+  const sanitizedInvoices = useMemo(() => {
     const s = q.trim().toLowerCase();
     return invoices.filter((i) => {
-      if (yearFilter !== "all") {
-        const y = (i.invoice_date || "").substring(0, 4);
-        if (y !== String(yearFilter)) return false;
-      }
-      if (month !== "all") {
-        const m = (i.invoice_date || "").substring(5, 7);
-        if (m !== month) return false;
-      }
+      if (yearFilter !== "all" && String(i.invoice_date).substring(0, 4) !== yearFilter) return false;
+      if (month !== "all" && String(i.invoice_date).substring(5, 7) !== month) return false;
       if (vendorFilter !== "all" && i.vendor_id !== vendorFilter) return false;
       if (!s) return true;
       return [i.invoice_no, i.vendor_name, i.po_number, i.notes]
         .filter(Boolean).join(" ").toLowerCase().includes(s);
     });
-  }, [invoices, q, month, yearFilter, vendorFilter]);
+  }, [invoices, q, yearFilter, month, vendorFilter]);
 
-  const sanitizedInvoices = useMemo(() => {
-    return filtered.map((i) => {
-      const linesVal = Number(i.lines_total || 0);
-      const rawTax = Number(i.tax_amount || 0);
-      const rawOther = Number(i.other_charges || 0);
-      const realTax = Math.abs(rawTax - linesVal) < 0.1 ? 0 : rawTax;
-      const realTotal = linesVal + realTax + rawOther;
-      return {
-        ...i,
-        lines_total: linesVal,
-        tax_and_other: realTax + rawOther,
-        invoice_total: realTotal,
-      };
-    });
-  }, [filtered]);
-
-  const total = sanitizedInvoices.reduce((a, i) => a + Number(i.invoice_total), 0);
-
-  async function openEdit(inv) {
-    const { data } = await supabase.from("it_assets").select("*").eq("invoice_id", inv.id).order("created_at");
-    setEditing({
-      id: inv.id,
-      invoice_no: inv.invoice_no, invoice_date: inv.invoice_date, vendor_id: inv.vendor_id || "",
-      po_number: inv.po_number || "", currency: inv.currency, tax_amount: inv.tax_amount,
-      other_charges: inv.other_charges, notes: inv.notes || "", attachment_path: inv.attachment_path || "",
-      lines: (data || []).map((l) => ({
-        ...l,
-        include_in_budget: !l.remarks?.includes("[EXCLUDED_FROM_BUDGET]"),
-        unit_cost: String(l.unit_cost),
-        warranty_end: l.warranty_end || "",
-        license_end: l.license_end || "",
-        amc_end: l.amc_end || "",
-        replacement_due: l.replacement_due || ""
-      })),
-    });
-    setOpen(true);
-  }
+  const total = useMemo(() => sanitizedInvoices.reduce((a, i) => a + Number(i.invoice_total || 0), 0), [sanitizedInvoices]);
 
   async function showDetail(inv) {
-    const { data } = await supabase
-      .from("it_assets").select("*, it_categories(name)").eq("invoice_id", inv.id).order("created_at");
+    const { data } = await supabase.from("it_assets").select("*, it_categories(name)").eq("invoice_id", inv.id);
     setDetail({ inv, lines: data || [] });
   }
 
   async function remove(inv) {
-    if (!confirm(`Delete invoice ${inv.invoice_no} and its ${inv.line_count} line(s)?`)) return;
+    if (!confirm(`Delete invoice ${inv.invoice_no}? Assets created from it will also be deleted.`)) return;
     await supabase.from("it_invoices").delete().eq("id", inv.id);
     load();
   }
 
   async function deleteAllInvoices() {
-    if (!confirm(`Are you sure you want to delete ALL ${invoices.length} invoices and asset records? This will clear all existing test data.`)) return;
-    setLoading(true);
-    const { data: allInvoices } = await supabase.from("it_invoices").select("id");
-    if (allInvoices && allInvoices.length > 0) {
-      for (const inv of allInvoices) {
-        await supabase.from("it_invoices").delete().eq("id", inv.id);
-      }
+    if (!confirm("⚠️ DANGER: Delete ALL invoices and clear asset lines? This action cannot be undone.")) return;
+    const { error: assetErr } = await supabase.from("it_assets").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    const { error: invErr } = await supabase.from("it_invoices").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (assetErr || invErr) {
+      alert("Failed to clear database: " + (assetErr?.message || invErr?.message));
+    } else {
+      alert("All invoices and assets have been deleted.");
+      load();
     }
-    load();
+  }
+
+  function openEdit(inv) {
+    supabase.from("it_assets").select("*").eq("invoice_id", inv.id).then(({ data }) => {
+      setEditing({
+        id: inv.id,
+        invoice_no: inv.invoice_no,
+        invoice_date: inv.invoice_date,
+        vendor_id: inv.vendor_id || "",
+        po_number: inv.po_number || "",
+        currency: inv.currency || "INR",
+        tax_amount: inv.tax_amount || 0,
+        other_charges: inv.other_charges || 0,
+        notes: inv.notes || "",
+        attachment_path: inv.attachment_path || "",
+        lines: (data || []).map((l) => ({ ...l, unit_cost: l.unit_cost })),
+      });
+      setOpen(true);
+    });
   }
 
   function exportCsv() {
-    csvDownload("invoices.csv", filtered.map((i) => ({
+    csvDownload("invoices.csv", sanitizedInvoices.map((i) => ({
       invoice_no: i.invoice_no, invoice_date: i.invoice_date, vendor: i.vendor_name || "",
       po_number: i.po_number || "", lines: i.line_count, lines_total: i.lines_total,
       tax: i.tax_amount, other: i.other_charges, total: i.invoice_total,
@@ -161,11 +143,20 @@ export default function InvoicesPage() {
     setInlineEditForm({
       category_id: l.category_id || "",
       scope: l.scope || "local",
-      staff_code: l.staff_code || "",
+      staff_name: l.staff_name || "",
       department: l.department || "",
       warranty_end: l.warranty_end || "",
       remarks: l.remarks || "",
     });
+  }
+
+  function handleDetailStaffSelection(empName) {
+    const matchedEmp = employees.find((e) => e.full_name === empName);
+    setInlineEditForm((prev) => ({
+      ...prev,
+      staff_name: empName,
+      department: matchedEmp ? matchedEmp.department : prev.department,
+    }));
   }
 
   async function saveDetailInlineEdit(l) {
@@ -173,7 +164,7 @@ export default function InvoicesPage() {
     const updates = {
       category_id: inlineEditForm.category_id || null,
       scope: inlineEditForm.scope || "local",
-      staff_code: inlineEditForm.staff_code || null,
+      staff_name: inlineEditForm.staff_name || null,
       department: inlineEditForm.department || null,
       warranty_end: inlineEditForm.warranty_end || null,
       remarks: inlineEditForm.remarks || null,
@@ -295,6 +286,8 @@ export default function InvoicesPage() {
           value={editing}
           categories={categories}
           vendors={vendors}
+          employees={employees}
+          departments={departments}
           userId={profile.id}
           onClose={() => setOpen(false)}
           onSaved={() => { setOpen(false); load(); }}
@@ -326,8 +319,7 @@ export default function InvoicesPage() {
                   <th>Asset</th>
                   <th>Category</th>
                   <th>Scope</th>
-                  <th>Assigned Staff</th>
-                  <th>Staff Code</th>
+                  <th>Staff Name</th>
                   <th>Department</th>
                   <th>Warranty End</th>
                   <th>Remarks</th>
@@ -370,22 +362,29 @@ export default function InvoicesPage() {
                             <option value="global">Global</option>
                           </select>
                         </td>
-                        <td>{l.staff_name || "—"}</td>
                         <td>
-                          <input
-                            value={inlineEditForm.staff_code}
-                            onChange={(e) => setInlineEditForm({ ...inlineEditForm, staff_code: e.target.value })}
-                            placeholder="Code"
-                            style={{ padding: "4px 6px", fontSize: 12, width: 80 }}
-                          />
+                          <select
+                            value={inlineEditForm.staff_name}
+                            onChange={(e) => handleDetailStaffSelection(e.target.value)}
+                            style={{ padding: "4px 6px", fontSize: 12, minWidth: 140 }}
+                          >
+                            <option value="">— Select Staff —</option>
+                            {employees.map((emp) => (
+                              <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>
+                            ))}
+                          </select>
                         </td>
                         <td>
-                          <input
+                          <select
                             value={inlineEditForm.department}
                             onChange={(e) => setInlineEditForm({ ...inlineEditForm, department: e.target.value })}
-                            placeholder="Dept"
-                            style={{ padding: "4px 6px", fontSize: 12, width: 90 }}
-                          />
+                            style={{ padding: "4px 6px", fontSize: 12, minWidth: 120 }}
+                          >
+                            <option value="">— Select Dept —</option>
+                            {departments.map((d) => (
+                              <option key={d.id} value={d.name}>{d.name}</option>
+                            ))}
+                          </select>
                         </td>
                         <td>
                           <input
@@ -427,9 +426,8 @@ export default function InvoicesPage() {
                       </td>
                       <td style={{ color: "var(--muted)" }}>{l.it_categories?.name || "—"}</td>
                       <td><span className={`pill ${l.scope === "global" ? "blue" : "grey"}`}>{l.scope === "global" ? "Global" : "Local"}</span></td>
-                      <td style={{ color: "var(--muted)" }}>{l.staff_name || "—"}</td>
-                      <td className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{l.staff_code || "—"}</td>
-                      <td style={{ color: "var(--muted)" }}>{l.department || "—"}</td>
+                      <td style={{ fontWeight: 600 }}>{l.staff_name || "—"}</td>
+                      <td><span className="pill grey">{l.department || "—"}</span></td>
                       <td className="mono" style={{ fontSize: 12 }}>{dateStr(l.warranty_end)}</td>
                       <td style={{ color: "var(--muted)", fontSize: 12 }}>{l.remarks || "—"}</td>
                       <td className="num mono">{l.quantity}</td>
@@ -463,7 +461,7 @@ function AttachmentLink({ path }) {
   return <a className="btn ghost sm" href={url} target="_blank" rel="noreferrer">Open attachment</a>;
 }
 
-function InvoiceForm({ value, categories, vendors, userId, onClose, onSaved }) {
+function InvoiceForm({ value, categories, vendors, employees = [], departments = [], userId, onClose, onSaved }) {
   const [inv, setInv] = useState(value);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -677,9 +675,40 @@ function InvoiceForm({ value, categories, vendors, userId, onClose, onSaved }) {
                 </select>
               </Field>
 
-              <Field label="Assigned staff"><input value={l.staff_name} onChange={(e) => setLine(i, "staff_name", e.target.value)} /></Field>
-              <Field label="Staff code"><input value={l.staff_code} onChange={(e) => setLine(i, "staff_code", e.target.value)} /></Field>
-              <Field label="Department"><input value={l.department} onChange={(e) => setLine(i, "department", e.target.value)} /></Field>
+              <Field label="Staff Name (Assigned User)">
+                <select
+                  value={l.staff_name || ""}
+                  onChange={(e) => {
+                    const empName = e.target.value;
+                    const matchedEmp = employees.find((emp) => emp.full_name === empName);
+                    setInv((prev) => {
+                      const nextLines = [...prev.lines];
+                      nextLines[i] = {
+                        ...nextLines[i],
+                        staff_name: empName,
+                        department: matchedEmp ? matchedEmp.department : nextLines[i].department,
+                      };
+                      return { ...prev, lines: nextLines };
+                    });
+                  }}
+                >
+                  <option value="">— Unassigned / Staff Name —</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Department">
+                <select
+                  value={l.department || ""}
+                  onChange={(e) => setLine(i, "department", e.target.value)}
+                >
+                  <option value="">— Select Department —</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Location"><input value={l.location} onChange={(e) => setLine(i, "location", e.target.value)} /></Field>
 
               <Field label="Quantity"><input type="number" min="1" value={l.quantity} onChange={(e) => setLine(i, "quantity", e.target.value)} /></Field>

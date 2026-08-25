@@ -9,6 +9,8 @@ import { money, dateStr, currentYear, csvDownload, ASSET_STATUS, daysUntil, expi
 export default function AssetsPage() {
   const [rows, setRows] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [year, setYear] = useState("all");
@@ -22,14 +24,18 @@ export default function AssetsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [a, c] = await Promise.all([
+    const [a, c, emp, dept] = await Promise.all([
       supabase.from("it_assets")
         .select("*, it_categories(name), it_invoices(invoice_no, invoice_date, it_vendors(name))")
         .order("purchase_date", { ascending: false }),
       supabase.from("it_categories").select("*").order("sort_order"),
+      supabase.from("it_employees").select("*").eq("is_active", true).order("full_name"),
+      supabase.from("it_departments").select("*").eq("is_active", true).order("name"),
     ]);
     setRows(a.data || []);
     setCategories(c.data || []);
+    setEmployees(emp.data || []);
+    setDepartments(dept.data || []);
     setLoading(false);
   }, []);
 
@@ -149,11 +155,20 @@ export default function AssetsPage() {
     setEditForm({
       category_id: r.category_id || "",
       scope: r.scope || "local",
-      staff_code: r.staff_code || "",
+      staff_name: r.staff_name || "",
       department: r.department || "",
       warranty_end: r.warranty_end || "",
       remarks: r.remarks || "",
     });
+  }
+
+  function handleStaffSelection(empName) {
+    const matchedEmp = employees.find((e) => e.full_name === empName);
+    setEditForm((prev) => ({
+      ...prev,
+      staff_name: empName,
+      department: matchedEmp ? matchedEmp.department : prev.department,
+    }));
   }
 
   async function saveInlineEdit(r) {
@@ -161,7 +176,7 @@ export default function AssetsPage() {
     const updates = {
       category_id: editForm.category_id || null,
       scope: editForm.scope || "local",
-      staff_code: editForm.staff_code || null,
+      staff_name: editForm.staff_name || null,
       department: editForm.department || null,
       warranty_end: editForm.warranty_end || null,
       remarks: editForm.remarks || null,
@@ -273,8 +288,7 @@ export default function AssetsPage() {
                   <th>Category</th>
                   <th>Scope</th>
                   <th>IT Budget?</th>
-                  <th>Assigned to</th>
-                  <th>Staff Code</th>
+                  <th>Staff Name</th>
                   <th>Department</th>
                   <th>Purchased</th>
                   <th>Warranty End</th>
@@ -326,22 +340,29 @@ export default function AssetsPage() {
                             {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
                           </span>
                         </td>
-                        <td>{r.staff_name || "—"}</td>
                         <td>
-                          <input
-                            value={editForm.staff_code}
-                            onChange={(e) => setEditForm({ ...editForm, staff_code: e.target.value })}
-                            placeholder="Code"
-                            style={{ padding: "4px 6px", fontSize: 12, width: 85 }}
-                          />
+                          <select
+                            value={editForm.staff_name}
+                            onChange={(e) => handleStaffSelection(e.target.value)}
+                            style={{ padding: "4px 6px", fontSize: 12, minWidth: 140 }}
+                          >
+                            <option value="">— Select Staff —</option>
+                            {employees.map((emp) => (
+                              <option key={emp.id} value={emp.full_name}>{emp.full_name}</option>
+                            ))}
+                          </select>
                         </td>
                         <td>
-                          <input
+                          <select
                             value={editForm.department}
                             onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-                            placeholder="Department"
-                            style={{ padding: "4px 6px", fontSize: 12, width: 95 }}
-                          />
+                            style={{ padding: "4px 6px", fontSize: 12, minWidth: 120 }}
+                          >
+                            <option value="">— Select Dept —</option>
+                            {departments.map((d) => (
+                              <option key={d.id} value={d.name}>{d.name}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.purchase_date)}</td>
                         <td>
@@ -403,9 +424,8 @@ export default function AssetsPage() {
                           {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
                         </button>
                       </td>
-                      <td>{r.staff_name || "—"}</td>
-                      <td className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{r.staff_code || "—"}</td>
-                      <td style={{ color: "var(--muted)" }}>{r.department || "—"}</td>
+                      <td style={{ fontWeight: 600 }}>{r.staff_name || "—"}</td>
+                      <td><span className="pill grey">{r.department || "—"}</span></td>
                       <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.purchase_date)}</td>
                       <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.warranty_end)}</td>
                       <td style={{ color: "var(--muted)", fontSize: 12 }}>{r.remarks || "—"}</td>
@@ -424,7 +444,7 @@ export default function AssetsPage() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan="10">Total</td>
+                  <td colSpan="9">Total</td>
                   <td className="num mono">{totals.qty}</td>
                   <td className="num mono">{money(totals.value)}</td>
                   <td />
