@@ -540,8 +540,13 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         const headers = rows[0].map((h) => h.trim().toLowerCase());
         const findCol = (keys) => headers.findIndex((h) => keys.some((k) => h.includes(k)));
 
-        const dateIdx = findCol(["order date", "invoice date", "purchase date", "date"]);
-        const idIdx = findCol(["order id", "invoice no", "invoice_no", "invoice number", "po number", "id"]);
+        const stmtIdx = headers.indexOf("statement number") !== -1 ? headers.indexOf("statement number") : headers.indexOf("statement_number");
+        const docDateIdx = headers.indexOf("document issue date") !== -1 ? headers.indexOf("document issue date") : headers.indexOf("document_issue_date");
+        const txTypeIdx = headers.indexOf("transaction type") !== -1 ? headers.indexOf("transaction type") : headers.indexOf("transaction_type");
+        const docStatusIdx = headers.indexOf("document status");
+        
+        const dateIdx = docDateIdx !== -1 ? docDateIdx : findCol(["order date", "invoice date", "purchase date", "date"]);
+        const idIdx = stmtIdx !== -1 ? stmtIdx : findCol(["order id", "invoice no", "invoice_no", "invoice number", "po number", "id"]);
         const poIdx = findCol(["po number", "po_number", "po"]);
         
         let titleIdx = headers.indexOf("title");
@@ -549,10 +554,10 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         if (titleIdx === -1) titleIdx = headers.findIndex((h) => h.includes("title") || (h.includes("product") && !h.includes("amazon-internal")));
         if (titleIdx === -1) titleIdx = 0;
 
-        const qtyIdx = findCol(["item quantity", "order quantity", "quantity", "qty"]);
-        const ppuIdx = findCol(["purchase ppu", "unit price", "unit cost", "price", "listed ppu", "ppu"]);
-        const taxIdx = findCol(["item & shipping tax", "tax amount", "order tax", "tax"]);
-        const totalIdx = findCol(["item net total", "order net total", "total", "net total", "subtotal"]);
+        const qtyIdx = findCol(["shipment quantity", "item quantity", "order quantity", "quantity", "qty"]);
+        const ppuIdx = findCol(["unit price excl. tax", "purchase ppu", "unit price", "unit cost", "price", "listed ppu", "ppu"]);
+        const taxIdx = findCol(["total tax amount", "item & shipping tax", "tax amount", "order tax", "tax"]);
+        const totalIdx = findCol(["net total", "item net total", "order net total", "total", "subtotal"]);
         const vendorIdx = findCol(["seller name", "vendor", "seller", "supplier"]);
         const userIdx = findCol(["account user", "user", "staff", "receiver name", "employee"]);
 
@@ -563,34 +568,42 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           const r = rows[i];
           if (!r || r.length < 3) continue;
 
-          const rawDate = r[dateIdx] || "";
+          const rawDate = r[dateIdx] || r[findCol(["order date"])] || "";
           let orderDate = todayISO();
           if (rawDate) {
-            const parts = rawDate.split("-");
-            if (parts.length === 3) {
-              const [d, m, y] = parts;
-              if (d.length === 2 && y.length === 4) orderDate = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-              else if (d.length === 4 && y.length === 2) orderDate = `${d}-${m.padStart(2, "0")}-${y.padStart(2, "0")}`;
-              else orderDate = rawDate;
+            if (rawDate.includes("/")) {
+              const parts = rawDate.split("/");
+              if (parts.length === 3) orderDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+            } else if (rawDate.includes("-")) {
+              const parts = rawDate.split("-");
+              if (parts.length === 3) {
+                const [d, m, y] = parts;
+                if (d.length === 4) orderDate = rawDate;
+                else orderDate = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+              }
             }
           }
 
           const orderId = r[idIdx] || `IMP-${i}`;
           const poNumber = r[poIdx] || "";
-          const sellerName = (r[vendorIdx] || "Amazon / Supplier").trim();
+          const sellerName = (vendorIdx !== -1 && r[vendorIdx] ? r[vendorIdx] : "Amazon Business").trim();
           const title = (r[titleIdx] || "IT Purchase Item").trim();
-          const qty = parseInt(r[qtyIdx]) || 1;
+          const qty = Math.abs(parseInt(r[qtyIdx])) || 1;
           const totalVal = parseFloat(r[totalIdx]) || 0;
-          const unitCost = parseFloat(r[ppuIdx]) || (totalVal ? totalVal / qty : 0);
-          const taxAmt = parseFloat(r[taxIdx]) || 0;
+          const unitCost = Math.abs(parseFloat(r[ppuIdx]) || (totalVal ? totalVal / qty : 0));
+          const taxAmt = Math.abs(parseFloat(r[taxIdx]) || 0);
           const staff = r[userIdx] || "";
+
+          const txType = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
+          const docStatus = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
+          const isRefund = txType.toLowerCase().includes("refund") || docStatus.toLowerCase().includes("refund") || totalVal < 0;
 
           // Intelligent Title Classification
           const t = title.toLowerCase();
           const getCat = (n) => categories.find((c) => c.name.toLowerCase().includes(n.toLowerCase()))?.id;
 
           let matchedCatId = defaultCatId;
-          if (t.includes("toner") || t.includes("cartridge") || t.includes("ink") || t.includes("thermal paper") || t.includes("chempure") || t.includes("ipa") || t.includes("isopropyl")) {
+          if (t.includes("toner") || t.includes("cartridge") || t.includes("ink") || t.includes("thermal paper") || t.includes("chempure") || t.includes("ipa") || t.includes("isopropyl") || t.includes("paper")) {
             matchedCatId = getCat("consumables") || getCat("printers") || defaultCatId;
           } else if (t.includes("inspection") || t.includes("amc") || t.includes("service")) {
             matchedCatId = getCat("amc") || getCat("services") || defaultCatId;
@@ -600,14 +613,14 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
             t.includes("headphone") || t.includes("headset") || t.includes("earphone") || t.includes("airpods") || t.includes("earpad") || t.includes("earsafe") ||
             t.includes("monitor") || t.includes("display") || t.includes("screen") ||
             t.includes("cable") || t.includes("hdmi") || t.includes("displayport") || t.includes("dock") || t.includes("stand") || t.includes("sdcard") || t.includes("micro sd") ||
-            t.includes("charger") || t.includes("adapter")
+            t.includes("charger") || t.includes("adapter") || t.includes("chair") || t.includes("memo") || t.includes("gloves")
           ) {
             matchedCatId = getCat("peripherals") || getCat("accessories") || defaultCatId;
           } else if (t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("tab ") || t.includes("mobile") || t.includes("landline")) {
             matchedCatId = getCat("mobile") || getCat("tablet") || defaultCatId;
           } else if (t.includes("ups") || t.includes("battery") || t.includes("power socket") || t.includes("power cord") || t.includes("inverter")) {
             matchedCatId = getCat("ups") || getCat("power") || defaultCatId;
-          } else if (t.includes("laptop") || t.includes("desktop pc") || t.includes("thinkpad") || t.includes("latitude")) {
+          } else if (t.includes("laptop") || t.includes("desktop pc") || t.includes("zbook") || t.includes("thinkpad") || t.includes("latitude")) {
             matchedCatId = getCat("laptops") || getCat("desktops") || defaultCatId;
           }
 
@@ -627,17 +640,17 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           const inv = invoicesMap.get(orderId);
           inv.tax_amount += taxAmt;
           inv.lines.push({
-            asset_name: title,
+            asset_name: title + (isRefund ? " (Refund / Credit Note)" : ""),
             category_id: matchedCatId,
             scope: "local",
-            include_in_budget: !isMobile,
+            include_in_budget: !isMobile && !isRefund,
             item_type: "hardware",
             quantity: qty,
             unit_cost: unitCost,
             purchase_date: orderDate,
-            status: "in_use",
+            status: isRefund ? "disposed" : "in_use",
             staff_name: staff,
-            remarks: `Vendor: ${sellerName} | Imported from CSV`
+            remarks: isRefund ? `Refund Credit Note: ${orderId}` : `Vendor: ${sellerName} | Imported from CSV`
           });
         }
 
