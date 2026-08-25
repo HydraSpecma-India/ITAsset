@@ -17,6 +17,8 @@ export default function AssetsPage() {
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("purchase_date");
 
+  const [budgetFilter, setBudgetFilter] = useState("all");
+
   const load = useCallback(async () => {
     setLoading(true);
     const [a, c] = await Promise.all([
@@ -34,6 +36,19 @@ export default function AssetsPage() {
 
   const years = useMemo(() => [...new Set(rows.map((r) => r.budget_year))].sort((a, b) => b - a), [rows]);
 
+  async function toggleScope(r) {
+    const nextScope = r.scope === "global" ? "local" : "global";
+    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, scope: nextScope } : item)));
+    await supabase.from("it_assets").update({ scope: nextScope }).eq("id", r.id);
+  }
+
+  async function toggleBudgetInclude(r) {
+    const current = r.include_in_budget !== false;
+    const nextVal = !current;
+    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal } : item)));
+    await supabase.from("it_assets").update({ include_in_budget: nextVal }).eq("id", r.id);
+  }
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     let out = rows.filter((r) => {
@@ -41,6 +56,8 @@ export default function AssetsPage() {
       if (cat !== "all" && r.category_id !== cat) return false;
       if (scope !== "all" && r.scope !== scope) return false;
       if (status !== "all" && r.status !== status) return false;
+      if (budgetFilter === "it_only" && r.include_in_budget === false) return false;
+      if (budgetFilter === "excluded_only" && r.include_in_budget !== false) return false;
       if (!s) return true;
       return [r.asset_name, r.asset_tag, r.serial_no, r.model, r.staff_name, r.staff_code,
               r.department, r.location, r.remarks, r.it_categories?.name, r.it_invoices?.invoice_no,
@@ -54,14 +71,20 @@ export default function AssetsPage() {
       return String(b.purchase_date).localeCompare(String(a.purchase_date));
     });
     return out;
-  }, [rows, q, year, cat, scope, status, sort]);
+  }, [rows, q, year, cat, scope, status, budgetFilter, sort]);
 
   const totals = useMemo(() => {
-    const t = { value: 0, qty: 0, local: 0, global: 0 };
+    const t = { value: 0, qty: 0, local: 0, global: 0, itBudget: 0, excluded: 0 };
     filtered.forEach((r) => {
-      t.value += Number(r.line_total);
+      const val = Number(r.line_total);
+      t.value += val;
       t.qty += r.quantity;
-      t[r.scope === "global" ? "global" : "local"] += Number(r.line_total);
+      t[r.scope === "global" ? "global" : "local"] += val;
+      if (r.include_in_budget !== false) {
+        t.itBudget += val;
+      } else {
+        t.excluded += val;
+      }
     });
     return t;
   }, [filtered]);
@@ -70,6 +93,7 @@ export default function AssetsPage() {
     csvDownload("asset-register.csv", filtered.map((r) => ({
       asset_name: r.asset_name, asset_tag: r.asset_tag || "", serial_no: r.serial_no || "",
       model: r.model || "", category: r.it_categories?.name || "", scope: r.scope,
+      include_in_it_budget: r.include_in_budget !== false ? "Yes" : "No (Admin/Dept)",
       item_type: r.item_type, staff_name: r.staff_name || "", department: r.department || "",
       location: r.location || "", quantity: r.quantity, unit_cost: r.unit_cost, line_total: r.line_total,
       purchase_date: r.purchase_date, warranty_end: r.warranty_end || "", license_end: r.license_end || "",
@@ -86,13 +110,13 @@ export default function AssetsPage() {
     >
       <div className="grid g4" style={{ marginBottom: 16 }}>
         <Kpi label="Items shown" value={filtered.length} foot={`${totals.qty} units`} />
-        <Kpi label="Value" value={money(totals.value)} tone="gold" />
-        <Kpi label="Local staff" value={money(totals.local)} />
-        <Kpi label="Global staff" value={money(totals.global)} />
+        <Kpi label="Total Asset Value" value={money(totals.value)} tone="gold" />
+        <Kpi label="IT Budget Spend" value={money(totals.itBudget)} foot="Counted in IT Budget" />
+        <Kpi label="Admin / Dept Spend" value={money(totals.excluded)} foot="Excluded from IT Budget" />
       </div>
 
       <div className="toolbar">
-        <div className="field" style={{ minWidth: 260, flex: 1 }}>
+        <div className="field" style={{ minWidth: 240, flex: 1 }}>
           <span className="field-label">Search</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Asset, serial, staff, invoice, vendor…" />
         </div>
@@ -116,6 +140,14 @@ export default function AssetsPage() {
             <option value="all">Local + Global</option>
             <option value="local">Local staff</option>
             <option value="global">Global staff</option>
+          </select>
+        </div>
+        <div className="field">
+          <span className="field-label">IT Budget?</span>
+          <select value={budgetFilter} onChange={(e) => setBudgetFilter(e.target.value)}>
+            <option value="all">All (IT + Admin)</option>
+            <option value="it_only">IT Budget Only</option>
+            <option value="excluded_only">Admin/Dept Excluded Only</option>
           </select>
         </div>
         <div className="field">
@@ -144,7 +176,7 @@ export default function AssetsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Asset</th><th>Category</th><th>Scope</th><th>Assigned to</th>
+                  <th>Asset</th><th>Category</th><th>Scope (Click to Toggle)</th><th>IT Budget? (Click to Toggle)</th><th>Assigned to</th>
                   <th>Purchased</th><th className="num">Qty</th><th className="num">Value</th>
                   <th>Next expiry</th><th>Status</th><th>Invoice</th>
                 </tr>
@@ -158,6 +190,8 @@ export default function AssetsPage() {
                    .sort((a, b) => a.n - b.n);
                   const next = dates[0];
                   const st = next ? expiryState(next.n) : null;
+                  const isItBudget = r.include_in_budget !== false;
+
                   return (
                     <tr key={r.id}>
                       <td>
@@ -167,14 +201,36 @@ export default function AssetsPage() {
                         </div>
                       </td>
                       <td style={{ color: "var(--muted)" }}>{r.it_categories?.name}</td>
-                      <td><span className={`pill ${r.scope === "global" ? "blue" : "grey"}`}>{r.scope === "global" ? "Global" : "Local"}</span></td>
+                      <td>
+                        <button
+                          className={`pill ${r.scope === "global" ? "blue" : "grey"}`}
+                          onClick={() => toggleScope(r)}
+                          style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
+                          title="Click to toggle between Local and Global scope"
+                        >
+                          {r.scope === "global" ? "Global ⇄" : "Local ⇄"}
+                        </button>
+                      </td>
+                      <td>
+                        <button
+                          className={`pill ${isItBudget ? "gold" : "grey"}`}
+                          onClick={() => toggleBudgetInclude(r)}
+                          style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
+                          title="Click to toggle whether this asset counts towards IT Budget or Admin/Dept Budget"
+                        >
+                          {isItBudget ? "✓ IT Budget" : "✕ Admin/Dept"}
+                        </button>
+                      </td>
                       <td>
                         <div>{r.staff_name || "—"}</div>
                         <div style={{ fontSize: 11, color: "var(--faint)" }}>{[r.department, r.location].filter(Boolean).join(" · ")}</div>
                       </td>
                       <td className="mono">{dateStr(r.purchase_date)}</td>
                       <td className="num mono">{r.quantity}</td>
-                      <td className="num mono">{money(r.line_total)}</td>
+                      <td className="num mono" style={{ opacity: isItBudget ? 1 : 0.65 }}>
+                        {money(r.line_total)}
+                        {!isItBudget && <div style={{ fontSize: 10, color: "var(--faint)" }}>Excluded</div>}
+                      </td>
                       <td>
                         {next ? (
                           <>
@@ -198,7 +254,7 @@ export default function AssetsPage() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan="5">Total</td>
+                  <td colSpan="6">Total</td>
                   <td className="num mono">{totals.qty}</td>
                   <td className="num mono">{money(totals.value)}</td>
                   <td colSpan="3" />

@@ -9,7 +9,7 @@ import { money, dateStr, todayISO, SCOPES, ITEM_TYPES, ASSET_STATUS, csvDownload
 
 const blankLine = () => ({
   asset_name: "", asset_tag: "", serial_no: "", model: "",
-  category_id: "", scope: "local", item_type: "hardware",
+  category_id: "", scope: "local", include_in_budget: true, item_type: "hardware",
   staff_name: "", staff_code: "", department: "", location: "",
   quantity: 1, unit_cost: "", purchase_date: todayISO(),
   warranty_end: "", license_end: "", amc_end: "", replacement_due: "",
@@ -315,6 +315,7 @@ function InvoiceForm({ value, categories, vendors, userId, onClose, onSaved }) {
         model: l.model || null,
         category_id: l.category_id,
         scope: l.scope,
+        include_in_budget: l.include_in_budget !== false,
         item_type: l.item_type,
         staff_name: l.staff_name || null,
         staff_code: l.staff_code || null,
@@ -420,6 +421,15 @@ function InvoiceForm({ value, categories, vendors, userId, onClose, onSaved }) {
               <Field label="Budget scope *">
                 <select value={l.scope} onChange={(e) => setLine(i, "scope", e.target.value)}>
                   {SCOPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Include in IT Budget?">
+                <select
+                  value={l.include_in_budget !== false ? "true" : "false"}
+                  onChange={(e) => setLine(i, "include_in_budget", e.target.value === "true")}
+                >
+                  <option value="true">Yes — IT Budget</option>
+                  <option value="false">No — Admin / Dept Budget (Excluded)</option>
                 </select>
               </Field>
               <Field label="Item type">
@@ -612,12 +622,15 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
             });
           }
 
+          const isMobile = matchedCatId === getCat("mobile") || matchedCatId === getCat("tablet") || t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("mobile") || t.includes("phone");
+
           const inv = invoicesMap.get(orderId);
           inv.tax_amount += taxAmt;
           inv.lines.push({
             asset_name: title,
             category_id: matchedCatId,
             scope: "local",
+            include_in_budget: !isMobile,
             item_type: "hardware",
             quantity: qty,
             unit_cost: unitCost,
@@ -692,6 +705,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           asset_name: l.asset_name,
           category_id: l.category_id,
           scope: l.scope,
+          include_in_budget: l.include_in_budget !== false,
           item_type: l.item_type,
           quantity: l.quantity,
           unit_cost: l.unit_cost,
