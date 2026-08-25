@@ -35,7 +35,7 @@ export default function LoginPage() {
     const { data: prof } = await supabase.from("it_users").select("*").eq("id", data.user.id).maybeSingle();
     if (!prof || !prof.is_active) {
       await supabase.auth.signOut();
-      setErr("This account is not active. Contact the IT administrator.");
+      setErr("This user account is not registered for IT Budget Monitor. Contact the IT administrator.");
       setBusy(false);
       return;
     }
@@ -46,7 +46,7 @@ export default function LoginPage() {
     <div className="auth-wrap">
       <div className="card auth-card">
         <div className="auth-head">
-          <div className="brand-mark">IT</div>
+          <div className="brand-mark">HS</div>
           <h1>IT Budget Monitor</h1>
           <p>Purchase, asset & budget control · HydraSpecma</p>
         </div>

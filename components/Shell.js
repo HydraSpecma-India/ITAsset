@@ -30,6 +30,7 @@ export default function Shell({ title, subtitle, actions, children }) {
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/login");
+    else if (user && !profile) signOut();
     else if (profile && profile.must_change_password) router.replace("/change-password");
     else if (profile && !profile.is_active) signOut();
   }, [loading, user, profile, router, signOut]);
@@ -46,7 +47,7 @@ export default function Shell({ title, subtitle, actions, children }) {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">IT</div>
+          <div className="brand-mark">HS</div>
           <div>
             <div className="brand-name">BUDGET MONITOR</div>
             <div className="brand-sub">HydraSpecma</div>
