@@ -120,7 +120,11 @@ export default function DashboardPage() {
 
   const overspent = byCategory.filter((c) => c.consumed > c.budget && c.budget > 0);
 
-  const [drilldown, setDrilldown] = useState(null);
+  const [activeSelection, setActiveSelection] = useState({
+    title: `All Purchases (${year})`,
+    filterKey: "all",
+    filterVal: null,
+  });
 
   const getMonthFromDateStr = (d) => {
     if (!d) return "";
@@ -136,48 +140,60 @@ export default function DashboardPage() {
     return "";
   };
 
-  const openDrilldown = (title, filteredItems) => {
-    try {
-      const items = Array.isArray(filteredItems) ? filteredItems : [];
-      const totalVal = items.reduce((sum, item) => sum + Number(item?.line_total || (Number(item?.quantity || 1) * Number(item?.unit_cost || 0))), 0);
-      setDrilldown({
-        title: String(title || "Drilldown Details"),
-        items,
-        totalVal,
-      });
-    } catch (err) {
-      console.error("Error opening drilldown:", err);
+  const activeItems = useMemo(() => {
+    if (!assets || assets.length === 0) return [];
+    const { filterKey, filterVal } = activeSelection;
+
+    if (filterKey === "category") {
+      return assets.filter((a) => (a.it_categories?.name || "Others").toLowerCase() === String(filterVal).toLowerCase());
     }
-  };
+    if (filterKey === "month") {
+      return assets.filter((a) => getMonthFromDateStr(a.purchase_date) === filterVal);
+    }
+    if (filterKey === "scope") {
+      return itAssets.filter((a) => a.scope === filterVal);
+    }
+    if (filterKey === "it_only") {
+      return itAssets;
+    }
+    if (filterKey === "admin_only") {
+      return assets.filter((a) => !isIncludedInBudget(a));
+    }
+    if (filterKey === "expiry") {
+      return upcoming;
+    }
+    return assets;
+  }, [assets, itAssets, upcoming, activeSelection]);
+
+  const activeTotalVal = useMemo(() => {
+    return activeItems.reduce((sum, item) => sum + Number(item?.line_total || (Number(item?.quantity || 1) * Number(item?.unit_cost || 0))), 0);
+  }, [activeItems]);
 
   const handleKpiClick = (type) => {
     if (type === "budget") {
-      openDrilldown(`IT Budget Allocation (${year})`, assets);
+      setActiveSelection({ title: `IT Budget Allocation (${year})`, filterKey: "all" });
     } else if (type === "consumed") {
-      openDrilldown(`IT Consumed Purchases (${year})`, itAssets);
+      setActiveSelection({ title: `IT Consumed Purchases (${year})`, filterKey: "it_only" });
     } else if (type === "balance") {
-      openDrilldown(`Active IT Assets (${year})`, itAssets);
+      setActiveSelection({ title: `Active IT Assets (${year})`, filterKey: "it_only" });
     } else if (type === "expiry") {
-      openDrilldown(`Upcoming Expiries & Renewals`, upcoming);
+      setActiveSelection({ title: `Upcoming Expiries & Renewals`, filterKey: "expiry" });
     }
   };
 
   const handleCategoryClick = (catRow) => {
     if (!catRow || !catRow.label) return;
-    const matching = assets.filter((a) => (a.it_categories?.name || "Others").toLowerCase() === String(catRow.label).toLowerCase());
-    openDrilldown(`Category: ${catRow.label} (${year})`, matching);
+    setActiveSelection({ title: `Category: ${catRow.label} (${year})`, filterKey: "category", filterVal: catRow.label });
   };
 
   const handleMonthlyClick = (colData, colIndex) => {
     const monthNum = String(colIndex + 1).padStart(2, "0");
-    const matching = assets.filter((a) => getMonthFromDateStr(a.purchase_date) === monthNum);
-    openDrilldown(`Monthly Spend: ${colData?.label || "Month"} ${year}`, matching);
+    setActiveSelection({ title: `Monthly Spend: ${colData?.label || "Month"} ${year}`, filterKey: "month", filterVal: monthNum });
   };
 
   const handleScopeClick = (scopeKey) => {
     const scopeLabel = scopeKey === "global" ? "Global" : "Local";
-    const matching = itAssets.filter((a) => a.scope === scopeKey);
-    openDrilldown(`${scopeLabel} Staff IT Purchases (${year})`, matching);
+    setActiveSelection({ title: `${scopeLabel} Staff IT Purchases (${year})`, filterKey: "scope", filterVal: scopeKey });
   };
 
   const exportDrilldownCsv = (title, items) => {
@@ -231,7 +247,7 @@ export default function DashboardPage() {
             />
           </div>
 
-          <Card title="Utilisation" hint={`Local vs Global staff spend for ${year}`}>
+          <Card title="Utilisation" hint={`Local vs Global staff spend for ${year} (click bar/slice for details)`}>
             <div className="grid g2" style={{ alignItems: "center" }}>
               <div style={{ display: "grid", gap: 14 }}>
                 {[["local", "Local staff"], ["global", "Global staff"]].map(([k, lbl]) => {
@@ -270,11 +286,11 @@ export default function DashboardPage() {
           </Card>
 
           <div className="grid g2">
-            <Card title="Budget vs consumed" hint="By category (click any bar to view details)" actions={<Link href="/budgets" className="btn ghost sm">Details</Link>}>
+            <Card title="Budget vs consumed" hint="By category (click any bar to filter table below)" actions={<Link href="/budgets" className="btn ghost sm">Details</Link>}>
               <GroupedBars rows={byCategory} onBarClick={handleCategoryClick} />
             </Card>
             <div className="grid" style={{ gap: 16, alignContent: "start" }}>
-              <Card title="Monthly spend" hint={`Purchases booked in ${year} (click bar for details)`}>
+              <Card title="Monthly spend" hint={`Purchases booked in ${year} (click bar to filter table below)`}>
                 <Columns data={monthly} onColClick={handleMonthlyClick} />
               </Card>
               {overspent.length > 0 && (
@@ -293,6 +309,71 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* INLINE ACTIVE DETAILS TABLE CARD */}
+          <Card
+            title={`📌 ${activeSelection.title}`}
+            hint={`${activeItems.length} item(s) found · Total value ${money(activeTotalVal)}`}
+            actions={
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {activeSelection.filterKey !== "all" && (
+                  <button className="btn ghost sm" onClick={() => setActiveSelection({ title: `All Purchases (${year})`, filterKey: "all" })}>
+                    🔄 Show All
+                  </button>
+                )}
+                <button className="btn sm" onClick={() => exportDrilldownCsv(activeSelection.title, activeItems)}>
+                  📥 Export CSV
+                </button>
+              </div>
+            }
+          >
+            {activeItems.length === 0 ? (
+              <Empty>No asset purchases match this selection.</Empty>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Invoice</th>
+                      <th>Purchase Date</th>
+                      <th>Asset Name</th>
+                      <th>Category</th>
+                      <th>Scope</th>
+                      <th>Assigned Staff</th>
+                      <th className="num">Qty</th>
+                      <th className="num">Unit Cost</th>
+                      <th className="num">Total</th>
+                      <th>IT Budget?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeItems.map((a, idx) => {
+                      if (!a) return null;
+                      const isInc = isIncludedInBudget(a);
+                      return (
+                        <tr key={a.id || idx}>
+                          <td style={{ fontWeight: 600 }}>{a.it_invoices?.invoice_no || a.invoice_no || "—"}</td>
+                          <td className="mono">{dateStr(a.purchase_date || a.expiry_date)}</td>
+                          <td style={{ fontWeight: 500 }}>{a.asset_name || "—"}</td>
+                          <td style={{ color: "var(--muted)" }}>{a.it_categories?.name || a.category_name || "—"}</td>
+                          <td><span className={`pill ${a.scope === "global" ? "blue" : "grey"}`}>{a.scope === "global" ? "Global" : "Local"}</span></td>
+                          <td style={{ color: "var(--muted)" }}>{a.staff_name || "—"}</td>
+                          <td className="num mono">{a.quantity || 1}</td>
+                          <td className="num mono">{money(a.unit_cost || a.line_total || 0)}</td>
+                          <td className="num mono" style={{ fontWeight: 600 }}>{money(a.line_total || (Number(a.quantity || 1) * Number(a.unit_cost || 0)))}</td>
+                          <td>
+                            <span className={`pill ${isInc ? "gold" : "red"}`}>
+                              {isInc ? "✓ IT Budget" : "✕ Admin/Dept"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
 
           <Card
             title="Expiry & renewal watchlist"
@@ -314,7 +395,7 @@ export default function DashboardPage() {
                     {upcoming.map((a, i) => {
                       const st = expiryState(a.d);
                       return (
-                        <tr key={i} onClick={() => openDrilldown(`Expiry Detail: ${a.asset_name}`, [a])} style={{ cursor: "pointer" }}>
+                        <tr key={i} onClick={() => setActiveSelection({ title: `Expiry Detail: ${a.asset_name}`, filterKey: "expiry" })} style={{ cursor: "pointer" }}>
                           <td>{a.asset_name}{a.asset_tag ? ` · ${a.asset_tag}` : ""}</td>
                           <td>{a.alert_type}</td>
                           <td style={{ color: "var(--muted)" }}>{a.category_name}</td>
@@ -329,57 +410,6 @@ export default function DashboardPage() {
               </div>
             )}
           </Card>
-
-          {drilldown && (
-            <Modal wide title={drilldown.title} onClose={() => setDrilldown(null)}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-                <div style={{ color: "var(--muted)", fontSize: 13 }}>
-                  Total <strong>{drilldown.items.length}</strong> item(s) line total: <strong className="mono" style={{ color: "var(--gold)" }}>{money(drilldown.totalVal)}</strong>
-                </div>
-                <button className="btn sm" onClick={() => exportDrilldownCsv(drilldown.title, drilldown.items)}>
-                  📥 Export Drilldown CSV
-                </button>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Invoice</th>
-                      <th>Purchase Date</th>
-                      <th>Asset Name</th>
-                      <th>Category</th>
-                      <th>Scope</th>
-                      <th>Assigned Staff</th>
-                      <th className="num">Qty</th>
-                      <th className="num">Unit Cost</th>
-                      <th className="num">Total</th>
-                      <th>IT Budget?</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drilldown.items.map((a, idx) => (
-                      <tr key={a.id || idx}>
-                        <td style={{ fontWeight: 600 }}>{a.it_invoices?.invoice_no || "—"}</td>
-                        <td className="mono">{dateStr(a.purchase_date || a.expiry_date)}</td>
-                        <td style={{ fontWeight: 500 }}>{a.asset_name}</td>
-                        <td style={{ color: "var(--muted)" }}>{a.it_categories?.name || a.category_name || "—"}</td>
-                        <td><span className={`pill ${a.scope === "global" ? "blue" : "grey"}`}>{a.scope === "global" ? "Global" : "Local"}</span></td>
-                        <td style={{ color: "var(--muted)" }}>{a.staff_name || "—"}</td>
-                        <td className="num mono">{a.quantity || 1}</td>
-                        <td className="num mono">{money(a.unit_cost || a.line_total)}</td>
-                        <td className="num mono" style={{ fontWeight: 600 }}>{money(a.line_total || 0)}</td>
-                        <td>
-                          <span className={`pill ${isIncludedInBudget(a) ? "gold" : "red"}`}>
-                            {isIncludedInBudget(a) ? "✓ IT Budget" : "✕ Admin/Dept"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Modal>
-          )}
         </div>
       )}
     </Shell>
