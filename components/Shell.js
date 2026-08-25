@@ -27,12 +27,17 @@ export default function Shell({ title, subtitle, actions, children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [theme, setTheme] = useState("dark");
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("itbm_theme") || "dark";
     setTheme(saved);
     document.documentElement.setAttribute("data-theme", saved);
   }, []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -59,13 +64,17 @@ export default function Shell({ title, subtitle, actions, children }) {
 
   return (
     <div className="shell">
-      <aside className="sidebar">
+      {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
+      <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="brand">
           <div className="brand-mark">HS</div>
           <div>
             <div className="brand-name">BUDGET MONITOR</div>
             <div className="brand-sub">HydraSpecma</div>
           </div>
+          <button className="btn ghost sm mobile-menu-toggle" onClick={() => setMobileOpen(false)} style={{ marginLeft: "auto" }}>
+            ✕
+          </button>
         </div>
 
         {NAV.map((g) => {
@@ -92,9 +101,14 @@ export default function Shell({ title, subtitle, actions, children }) {
 
       <div className="main">
         <header className="topbar">
-          <div>
-            <h1>{title}</h1>
-            {subtitle && <div className="sub">{subtitle}</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="btn ghost sm mobile-menu-toggle" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Toggle Menu">
+              {mobileOpen ? "✕" : "☰"}
+            </button>
+            <div>
+              <h1>{title}</h1>
+              {subtitle && <div className="sub">{subtitle}</div>}
+            </div>
           </div>
           <div className="topbar-right">
             {actions}
