@@ -561,12 +561,38 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         const vendorIdx = findCol(["seller name", "vendor", "seller", "supplier"]);
         const userIdx = findCol(["account user", "user", "staff", "receiver name", "employee"]);
 
+        const orderIdColIdx = headers.indexOf("order id") !== -1 ? headers.indexOf("order id") : findCol(["order id", "order_id"]);
         const defaultCatId = categories[0]?.id || "";
+
+        // Pass 1: Identify all refunded order IDs
+        const refundedOrderIds = new Set();
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          if (!r || r.length < 3) continue;
+          const orderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
+          const txType = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
+          const docStatus = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
+          const totalVal = parseFloat(r[totalIdx]) || 0;
+          const isRefund = txType.toLowerCase().includes("refund") || docStatus.toLowerCase().includes("refund") || totalVal < 0;
+          if (isRefund && orderId) refundedOrderIds.add(orderId);
+        }
+
         const invoicesMap = new Map();
 
         for (let i = 1; i < rows.length; i++) {
           const r = rows[i];
           if (!r || r.length < 3) continue;
+
+          const rawOrderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
+          const txType = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
+          const docStatus = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
+          const totalVal = parseFloat(r[totalIdx]) || 0;
+          const isRefund = txType.toLowerCase().includes("refund") || docStatus.toLowerCase().includes("refund") || totalVal < 0;
+
+          // Skip refunded orders (both charge & refund credit note lines)
+          if ((rawOrderId && refundedOrderIds.has(rawOrderId)) || isRefund) {
+            continue;
+          }
 
           const rawDate = r[dateIdx] || r[findCol(["order date"])] || "";
           let orderDate = todayISO();
