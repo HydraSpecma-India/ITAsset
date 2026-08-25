@@ -7,12 +7,22 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
 import { money, currentYear, csvDownload } from "@/lib/format";
 
+function isIncludedInBudget(a) {
+  if (a.remarks && a.remarks.includes("[INCLUDED_IN_IT_BUDGET]")) return true;
+  if (a.remarks && a.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
+  if (a.include_in_budget === false) return false;
+  const catName = (a.it_categories?.name || "").toLowerCase();
+  if (catName.includes("mobile") || catName.includes("tablet")) return false;
+  return true;
+}
+
 export default function BudgetsPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
   const [year, setYear] = useState(currentYear());
   const [categories, setCategories] = useState([]);
   const [rows, setRows] = useState([]);
+  const [assets, setAssets] = useState([]);
   const [draft, setDraft] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -20,14 +30,16 @@ export default function BudgetsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [c, s] = await Promise.all([
+    const [c, s, a] = await Promise.all([
       supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order"),
-      supabase.from("v_it_budget_summary").select("*").eq("budget_year", year),
+      supabase.from("it_budgets").select("*").eq("budget_year", year),
+      supabase.from("it_assets").select("line_total,scope,category_id,remarks,it_categories(name)").eq("budget_year", year),
     ]);
     setCategories(c.data || []);
     setRows(s.data || []);
+    setAssets(a.data || []);
     const d = {};
-    (s.data || []).forEach((r) => { d[`${r.category_id}|${r.scope}`] = String(r.budget_amount); });
+    (s.data || []).forEach((r) => { d[`${r.category_id}|${r.scope}`] = String(r.amount); });
     setDraft(d);
     setLoading(false);
   }, [year]);
@@ -35,18 +47,27 @@ export default function BudgetsPage() {
   useEffect(() => { load(); }, [load]);
 
   const view = useMemo(() => {
-    const map = new Map();
-    rows.forEach((r) => map.set(`${r.category_id}|${r.scope}`, r));
+    const budgetMap = new Map();
+    rows.forEach((r) => budgetMap.set(`${r.category_id}|${r.scope}`, Number(r.amount || 0)));
+
+    const consumedMap = new Map();
+    assets.filter(isIncludedInBudget).forEach((a) => {
+      const k = `${a.category_id}|${a.scope}`;
+      consumedMap.set(k, (consumedMap.get(k) || 0) + Number(a.line_total || 0));
+    });
+
     return categories.map((c) => {
-      const l = map.get(`${c.id}|local`) || {};
-      const g = map.get(`${c.id}|global`) || {};
+      const lb = budgetMap.get(`${c.id}|local`) || 0;
+      const lc = consumedMap.get(`${c.id}|local`) || 0;
+      const gb = budgetMap.get(`${c.id}|global`) || 0;
+      const gc = consumedMap.get(`${c.id}|global`) || 0;
       return {
         id: c.id, name: c.name,
-        local: { budget: Number(l.budget_amount || 0), consumed: Number(l.consumed || 0) },
-        global: { budget: Number(g.budget_amount || 0), consumed: Number(g.consumed || 0) },
+        local: { budget: lb, consumed: lc },
+        global: { budget: gb, consumed: gc },
       };
     });
-  }, [categories, rows]);
+  }, [categories, rows, assets]);
 
   const totals = useMemo(() => {
     const t = { lb: 0, lc: 0, gb: 0, gc: 0 };

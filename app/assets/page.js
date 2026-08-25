@@ -37,8 +37,12 @@ export default function AssetsPage() {
   const years = useMemo(() => [...new Set(rows.map((r) => r.budget_year))].sort((a, b) => b - a), [rows]);
 
   function isIncludedInBudget(r) {
+    if (r.remarks && r.remarks.includes("[INCLUDED_IN_IT_BUDGET]")) return true;
     if (r.remarks && r.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
-    return r.include_in_budget !== false;
+    if (r.include_in_budget === false) return false;
+    const catName = (r.it_categories?.name || "").toLowerCase();
+    if (catName.includes("mobile") || catName.includes("tablet")) return false;
+    return true;
   }
 
   async function toggleScope(r) {
@@ -55,13 +59,20 @@ export default function AssetsPage() {
     const current = isIncludedInBudget(r);
     const nextVal = !current;
     let nextRemarks = (r.remarks || "").trim();
+
     if (nextVal) {
       nextRemarks = nextRemarks.replace(/\[EXCLUDED_FROM_BUDGET\]/g, "").trim();
-    } else if (!nextRemarks.includes("[EXCLUDED_FROM_BUDGET]")) {
-      nextRemarks = (`[EXCLUDED_FROM_BUDGET] ${nextRemarks}`).trim();
+      if (!nextRemarks.includes("[INCLUDED_IN_IT_BUDGET]")) {
+        nextRemarks = (`[INCLUDED_IN_IT_BUDGET] ${nextRemarks}`).trim();
+      }
+    } else {
+      nextRemarks = nextRemarks.replace(/\[INCLUDED_IN_IT_BUDGET\]/g, "").trim();
+      if (!nextRemarks.includes("[EXCLUDED_FROM_BUDGET]")) {
+        nextRemarks = (`[EXCLUDED_FROM_BUDGET] ${nextRemarks}`).trim();
+      }
     }
 
-    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal, remarks: nextRemarks } : item)));
+    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, remarks: nextRemarks } : item)));
     
     const { error } = await supabase.from("it_assets").update({ remarks: nextRemarks }).eq("id", r.id);
     if (error) {

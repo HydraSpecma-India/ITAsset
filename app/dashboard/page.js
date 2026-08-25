@@ -9,6 +9,15 @@ import { money, moneyShort, currentYear, dateStr, daysUntil, expiryState } from 
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function isIncludedInBudget(a) {
+  if (a.remarks && a.remarks.includes("[INCLUDED_IN_IT_BUDGET]")) return true;
+  if (a.remarks && a.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
+  if (a.include_in_budget === false) return false;
+  const catName = (a.it_categories?.name || "").toLowerCase();
+  if (catName.includes("mobile") || catName.includes("tablet")) return false;
+  return true;
+}
+
 export default function DashboardPage() {
   const [year, setYear] = useState(currentYear());
   const [summary, setSummary] = useState([]);
@@ -30,7 +39,7 @@ export default function DashboardPage() {
     (async () => {
       const [s, a, e] = await Promise.all([
         supabase.from("v_it_budget_summary").select("*").eq("budget_year", year),
-        supabase.from("it_assets").select("purchase_date,line_total,scope,category_id,status,it_categories(name)").eq("budget_year", year),
+        supabase.from("it_assets").select("purchase_date,line_total,scope,category_id,status,remarks,it_categories(id,name,sort_order)").eq("budget_year", year),
         supabase.from("v_it_expiry_alerts").select("*"),
       ]);
       setSummary(s.data || []);
@@ -40,19 +49,27 @@ export default function DashboardPage() {
     })();
   }, [year]);
 
+  const itAssets = useMemo(() => assets.filter((a) => isIncludedInBudget(a)), [assets]);
+
   const totals = useMemo(() => {
     const t = { budget: 0, consumed: 0, local: { b: 0, c: 0 }, global: { b: 0, c: 0 } };
     summary.forEach((r) => {
       t.budget += Number(r.budget_amount);
-      t.consumed += Number(r.consumed);
       const k = r.scope === "global" ? "global" : "local";
       t[k].b += Number(r.budget_amount);
-      t[k].c += Number(r.consumed);
     });
+
+    itAssets.forEach((a) => {
+      const val = Number(a.line_total);
+      t.consumed += val;
+      const k = a.scope === "global" ? "global" : "local";
+      t[k].c += val;
+    });
+
     t.balance = t.budget - t.consumed;
     t.pct = t.budget ? (t.consumed / t.budget) * 100 : 0;
     return t;
-  }, [summary]);
+  }, [summary, itAssets]);
 
   const byCategory = useMemo(() => {
     const m = new Map();
@@ -60,20 +77,27 @@ export default function DashboardPage() {
       const k = r.category_name;
       const c = m.get(k) || { label: k, budget: 0, consumed: 0, sort: r.sort_order };
       c.budget += Number(r.budget_amount);
-      c.consumed += Number(r.consumed);
       m.set(k, c);
     });
+
+    itAssets.forEach((a) => {
+      const k = a.it_categories?.name || "Others";
+      const c = m.get(k) || { label: k, budget: 0, consumed: 0, sort: a.it_categories?.sort_order || 999 };
+      c.consumed += Number(a.line_total);
+      m.set(k, c);
+    });
+
     return [...m.values()].sort((a, b) => b.consumed - a.consumed || a.sort - b.sort);
-  }, [summary]);
+  }, [summary, itAssets]);
 
   const monthly = useMemo(() => {
     const arr = MONTHS.map((m) => ({ label: m, value: 0 }));
-    assets.forEach((a) => {
+    itAssets.forEach((a) => {
       const mi = new Date(a.purchase_date + "T00:00:00").getMonth();
       arr[mi].value += Number(a.line_total);
     });
     return arr;
-  }, [assets]);
+  }, [itAssets]);
 
   const alertBuckets = useMemo(() => {
     const b = { expired: [], critical: [], soon: [] };
