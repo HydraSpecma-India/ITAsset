@@ -254,6 +254,107 @@ export default function AssetsPage() {
     }
   }
 
+  async function splitAssetLine(r) {
+    if (r.quantity <= 1) return alert("Quantity is 1. Nothing to split.");
+    
+    if (!confirm(`Split "${r.asset_name}" (Qty: ${r.quantity}) into ${r.quantity} separate 1-qty line items?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error: updateErr } = await supabase.from("it_assets").update({ quantity: 1 }).eq("id", r.id);
+      if (updateErr) throw updateErr;
+
+      const newCount = r.quantity - 1;
+      const newItems = [];
+      for (let i = 0; i < newCount; i++) {
+        newItems.push({
+          invoice_id: r.invoice_id || null,
+          asset_name: r.asset_name,
+          asset_tag: r.asset_tag ? `${r.asset_tag}-${i + 2}` : null,
+          serial_no: r.serial_no ? `${r.serial_no}-${i + 2}` : null,
+          model: r.model || null,
+          category_id: r.category_id,
+          scope: r.scope || "local",
+          include_in_budget: r.include_in_budget,
+          item_type: r.item_type || "hardware",
+          staff_name: null,
+          staff_code: null,
+          department: null,
+          location: r.location || null,
+          quantity: 1,
+          unit_cost: r.unit_cost,
+          purchase_date: r.purchase_date,
+          warranty_end: r.warranty_end || null,
+          license_end: r.license_end || null,
+          amc_end: r.amc_end || null,
+          replacement_due: r.replacement_due || null,
+          status: r.status || "in_use",
+          remarks: r.remarks || null,
+        });
+      }
+
+      const { error: insertErr } = await supabase.from("it_assets").insert(newItems);
+      if (insertErr) throw insertErr;
+
+      load();
+    } catch (e) {
+      alert("Error splitting asset: " + e.message);
+      setLoading(false);
+    }
+  }
+
+  async function splitAllMultiQtyAssets() {
+    const multiQtyRows = rows.filter((r) => r.quantity > 1);
+    if (!multiQtyRows.length) return alert("No multi-quantity assets found.");
+
+    if (!confirm(`Found ${multiQtyRows.length} assets with Qty > 1. Auto-split all into individual 1-qty line items?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      for (const r of multiQtyRows) {
+        await supabase.from("it_assets").update({ quantity: 1 }).eq("id", r.id);
+
+        const newCount = r.quantity - 1;
+        const newItems = [];
+        for (let i = 0; i < newCount; i++) {
+          newItems.push({
+            invoice_id: r.invoice_id || null,
+            asset_name: r.asset_name,
+            asset_tag: r.asset_tag ? `${r.asset_tag}-${i + 2}` : null,
+            serial_no: r.serial_no ? `${r.serial_no}-${i + 2}` : null,
+            model: r.model || null,
+            category_id: r.category_id,
+            scope: r.scope || "local",
+            include_in_budget: r.include_in_budget,
+            item_type: r.item_type || "hardware",
+            staff_name: null,
+            staff_code: null,
+            department: null,
+            location: r.location || null,
+            quantity: 1,
+            unit_cost: r.unit_cost,
+            purchase_date: r.purchase_date,
+            warranty_end: r.warranty_end || null,
+            license_end: r.license_end || null,
+            amc_end: r.amc_end || null,
+            replacement_due: r.replacement_due || null,
+            status: r.status || "in_use",
+            remarks: r.remarks || null,
+          });
+        }
+        await supabase.from("it_assets").insert(newItems);
+      }
+      load();
+    } catch (e) {
+      alert("Error splitting assets: " + e.message);
+      setLoading(false);
+    }
+  }
+
   return (
     <Shell
       title={isEmployee ? "My Assigned Assets" : "Asset Register"}
@@ -269,9 +370,21 @@ export default function AssetsPage() {
                 <button className="btn ghost sm" onClick={() => setBulkEdit(false)}>✕ Cancel</button>
               </>
             ) : (
-              <button className="btn ghost sm" onClick={startBulkGridEdit} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
-                ⚡ Bulk Grid Edit Mode
-              </button>
+              <>
+                {rows.some((r) => r.quantity > 1) && (
+                  <button
+                    className="btn ghost sm"
+                    onClick={splitAllMultiQtyAssets}
+                    style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
+                    title="Split all multi-qty items into 1-qty lines to assign to individual employees"
+                  >
+                    ✂️ Auto-Split Multi-Qty
+                  </button>
+                )}
+                <button className="btn ghost sm" onClick={startBulkGridEdit} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
+                  ⚡ Bulk Grid Edit Mode
+                </button>
+              </>
             )
           )}
           <button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>
@@ -634,9 +747,21 @@ export default function AssetsPage() {
                       )}
                       {isAdmin && (
                         <td>
-                          <button className="btn ghost sm" onClick={() => startInlineEdit(r)}>
-                            ✏️ Edit
-                          </button>
+                          <div className="btn-row">
+                            <button className="btn ghost sm" onClick={() => startInlineEdit(r)}>
+                              ✏️ Edit
+                            </button>
+                            {r.quantity > 1 && (
+                              <button
+                                className="btn ghost sm"
+                                onClick={() => splitAssetLine(r)}
+                                style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
+                                title={`Split ${r.quantity} quantity into ${r.quantity} separate 1-qty items so each can be assigned to a different employee`}
+                              >
+                                ✂️ Split Qty
+                              </button>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
