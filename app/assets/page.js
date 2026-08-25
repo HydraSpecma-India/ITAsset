@@ -37,7 +37,6 @@ export default function AssetsPage() {
   const years = useMemo(() => [...new Set(rows.map((r) => r.budget_year))].sort((a, b) => b - a), [rows]);
 
   function isIncludedInBudget(r) {
-    if (r.item_type === "non_budget") return false;
     if (r.remarks && r.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
     return r.include_in_budget !== false;
   }
@@ -61,11 +60,10 @@ export default function AssetsPage() {
     } else if (!nextRemarks.includes("[EXCLUDED_FROM_BUDGET]")) {
       nextRemarks = (`[EXCLUDED_FROM_BUDGET] ${nextRemarks}`).trim();
     }
-    const nextItemType = nextVal ? (r.item_type === "non_budget" ? "hardware" : r.item_type) : "non_budget";
 
-    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal, remarks: nextRemarks, item_type: nextItemType } : item)));
+    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal, remarks: nextRemarks } : item)));
     
-    const { error } = await supabase.from("it_assets").update({ remarks: nextRemarks, item_type: nextItemType }).eq("id", r.id);
+    const { error } = await supabase.from("it_assets").update({ remarks: nextRemarks }).eq("id", r.id);
     if (error) {
       alert("Database error updating budget inclusion: " + error.message);
       load();
