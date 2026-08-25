@@ -552,15 +552,32 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           const totalVal = parseFloat(r[totalIdx]) || 0;
           const unitCost = parseFloat(r[ppuIdx]) || (totalVal ? totalVal / qty : 0);
           const taxAmt = parseFloat(r[taxIdx]) || 0;
-          const catStr = r[catIdx] || "";
           const staff = r[userIdx] || "";
 
+          // Intelligent Title Classification
+          const t = title.toLowerCase();
+          const findCat = (name) => categories.find((c) => c.name.toLowerCase().includes(name.toLowerCase()))?.id;
+
           let matchedCatId = defaultCatId;
-          for (const c of categories) {
-            if ((catStr + " " + title).toLowerCase().includes(c.name.toLowerCase())) {
-              matchedCatId = c.id;
-              break;
-            }
+          if (t.includes("toner") || t.includes("cartridge") || t.includes("ink") || t.includes("thermal paper") || t.includes("chempure") || t.includes("ipa") || t.includes("isopropyl")) {
+            matchedCatId = findCat("Consumables") || findCat("Printers") || defaultCatId;
+          } else if (t.includes("inspection") || t.includes("amc") || t.includes("service contract")) {
+            matchedCatId = findCat("AMC") || findCat("Services") || defaultCatId;
+          } else if (
+            t.includes("keyboard") || t.includes("mouse") || t.includes("webcam") ||
+            t.includes("backpack") || t.includes("bag") || t.includes("messenger") ||
+            t.includes("headphone") || t.includes("headset") || t.includes("earphone") || t.includes("airpods") || t.includes("earpad") || t.includes("earsafe") ||
+            t.includes("monitor") || t.includes("display") || t.includes("screen") ||
+            t.includes("cable") || t.includes("hdmi") || t.includes("displayport") || t.includes("dock") || t.includes("stand") || t.includes("sdcard") || t.includes("micro sd") ||
+            t.includes("charger") || t.includes("adapter")
+          ) {
+            matchedCatId = findCat("Peripherals") || findCat("Accessories") || defaultCatId;
+          } else if (t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("mobile") || t.includes("landline")) {
+            matchedCatId = findCat("Mobile") || findCat("Tablet") || defaultCatId;
+          } else if (t.includes("ups") || t.includes("battery") || t.includes("power socket") || t.includes("power cord") || t.includes("inverter")) {
+            matchedCatId = findCat("UPS") || findCat("Power") || defaultCatId;
+          } else if (t.includes("laptop") || t.includes("desktop pc") || t.includes("thinkpad") || t.includes("latitude")) {
+            matchedCatId = findCat("Laptops") || findCat("Desktops") || defaultCatId;
           }
 
           if (!invoicesMap.has(orderId)) {
