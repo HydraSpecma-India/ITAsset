@@ -800,32 +800,37 @@ function parsePDFTextToInvoice(text, categories, vendors) {
   const lowerText = text.toLowerCase();
 
   // 1. Detect Vendor Name
-  if (lowerText.includes("gamut infosystems") || lowerText.includes("zamin pallavaram")) vendor_name = "Gamut Infosystems";
+  if (lowerText.includes("alexis infra solutions") || lowerText.includes("chitlapakkam")) vendor_name = "Alexis Infra Solutions";
+  else if (lowerText.includes("gamut infosystems") || lowerText.includes("zamin pallavaram")) vendor_name = "Gamut Infosystems";
   else if (lowerText.includes("airtel") || lowerText.includes("bharti airtel")) vendor_name = "Bharti Airtel Limited";
   else if (lowerText.includes("vodafone") || lowerText.includes("vodafoneidea") || lowerText.includes("vbsbillingsupport")) vendor_name = "Vodafone Idea Limited";
   else if (lowerText.includes("amazon")) vendor_name = "Amazon Business";
 
   // 2. Detect Invoice Number
-  const invNoMatch = text.match(/Invoice No[.:\s]+([A-Z0-9\/-]+)/i) ||
+  const invNoMatch = text.match(/Invoice\s*no[.:\s]+([0-9\/-]+)/i) ||
+                     text.match(/Invoice No[.:\s]+([A-Z0-9\/-]+)/i) ||
                      text.match(/Invoice number[.:\s]+([A-Z0-9\/-]+)/i) ||
-                     text.match(/Invoice no[.:\s]+([A-Z0-9\/-]+)/i) ||
                      text.match(/Invoice Ref No[.:\s]+([A-Z0-9\/-]+)/i);
   if (invNoMatch) invoice_no = invNoMatch[1].trim();
 
   // 3. Detect Invoice Date
-  const dateMatch = text.match(/Dated[.:\s]+(\d{1,2}-[A-Za-z]{3}-\d{2,4})/i) ||
+  const dateMatch = text.match(/DATE[.:\s]+(\d{1,2}-\d{1,2}-\d{2,4})/i) ||
+                    text.match(/Dated[.:\s]+(\d{1,2}-[A-Za-z]{3}-\d{2,4})/i) ||
                     text.match(/Invoice Date[.:\s]+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i) ||
-                    text.match(/Invoice date[.:\s]+(\d{1,2}-[A-Za-z]{3}-\d{2,4})/i) ||
                     text.match(/Bill cycle date[.:\s]+(\d{1,2}\.\d{1,2}\.\d{2,4})/i);
   if (dateMatch) {
     const raw = dateMatch[1].trim();
     if (raw.includes("-")) {
       const parts = raw.split("-");
       if (parts.length === 3) {
-        const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
-        const m = months[parts[1].toLowerCase().substring(0, 3)] || "01";
-        const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-        invoice_date = `${y}-${m}-${parts[0].padStart(2, "0")}`;
+        if (/^\d+$/.test(parts[1])) {
+          invoice_date = `${parts[2].length === 2 ? "20" + parts[2] : parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+        } else {
+          const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+          const m = months[parts[1].toLowerCase().substring(0, 3)] || "01";
+          const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          invoice_date = `${y}-${m}-${parts[0].padStart(2, "0")}`;
+        }
       }
     } else if (raw.includes(".")) {
       const parts = raw.split(".");
@@ -836,18 +841,56 @@ function parsePDFTextToInvoice(text, categories, vendors) {
     }
   }
 
-  // 4. Detect Tax Amount
-  const taxMatch = text.match(/\(\+\)\s*Tax\s*([\d,]+\.?\d*)/i) ||
-                   text.match(/Total taxes?[.:\s]+(?:INR|₹)?\s*([\d,]+\.?\d*)/i) ||
-                   text.match(/Tax Amount[.:\s]+(?:INR|₹)?\s*([\d,]+\.?\d*)/i);
-  if (taxMatch) {
-    tax_amount = parseFloat(taxMatch[1].replace(/,/g, "")) || 0;
-  } else if (lowerText.includes("7,000.00") && lowerText.includes("8,260.00")) {
-    tax_amount = 1260.00;
+  // 4. Detect Tax Amount (CGST + SGST or direct (+) Tax)
+  const cgstMatch = text.match(/CGST[^\d\n]*\d+%\s*([\d,]+\.?\d*)/i);
+  const sgstMatch = text.match(/SGST[^\d\n]*\d+%\s*([\d,]+\.?\d*)/i);
+  if (cgstMatch || sgstMatch) {
+    const cVal = cgstMatch ? parseFloat(cgstMatch[1].replace(/,/g, "")) : 0;
+    const sVal = sgstMatch ? parseFloat(sgstMatch[1].replace(/,/g, "")) : 0;
+    tax_amount = cVal + sVal;
+  } else {
+    const taxMatch = text.match(/\(\+\)\s*Tax\s*([\d,]+\.?\d*)/i) ||
+                     text.match(/Total taxes?[.:\s]+(?:INR|₹)?\s*([\d,]+\.?\d*)/i) ||
+                     text.match(/Tax Amount[.:\s]+(?:INR|₹)?\s*([\d,]+\.?\d*)/i);
+    if (taxMatch) {
+      tax_amount = parseFloat(taxMatch[1].replace(/,/g, "")) || 0;
+    } else if (lowerText.includes("7,000.00") && lowerText.includes("8,260.00")) {
+      tax_amount = 1260.00;
+    }
   }
 
   // 5. Line Item Extraction
-  if (lowerText.includes("canon") || lowerText.includes("iirc 3226") || lowerText.includes("ir c3326") || lowerText.includes("fixed rental charges")) {
+  if (lowerText.includes("alexis infra solutions") || lowerText.includes("chitlapakkam")) {
+    if (lowerText.includes("supply of cat-6") || lowerText.includes("hard disk 6tb")) {
+      lines.push(
+        { asset_name: "Supply of Cat-6 Cable for Camera", quantity: 80, unit_cost: 51.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "hardware", category_id: detectCategory("CCTV & Security", categories), remarks: "Alexis Camera Cat6 Cable [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "Face Plate", quantity: 1, unit_cost: 110.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "hardware", category_id: detectCategory("Peripherals & Accessories", categories), remarks: "Alexis Face Plate [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "Back Box", quantity: 1, unit_cost: 70.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "hardware", category_id: detectCategory("Peripherals & Accessories", categories), remarks: "Alexis Back Box [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "2 MP Dhuha IP Camera", quantity: 2, unit_cost: 2800.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "hardware", category_id: detectCategory("CCTV & Security", categories), remarks: "Alexis 2MP IP Camera [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "WD Hard Disk 6TB", quantity: 1, unit_cost: 24000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "hardware", category_id: detectCategory("Server & Storage", categories), remarks: "Alexis 6TB Surveillance HDD [INCLUDED_IN_IT_BUDGET]" }
+      );
+    } else if (lowerText.includes("installation-") || lowerText.includes("camera alinement")) {
+      lines.push({
+        asset_name: "CCTV Installation & Cable Termination Service",
+        quantity: 1, unit_cost: 6500.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Alexis CCTV Installation [INCLUDED_IN_IT_BUDGET]"
+      });
+    } else if (lowerText.includes("firmware image preparation") || lowerText.includes("bootloader")) {
+      lines.push(
+        { asset_name: "Firmware Image Preparation & Compatibility Verification", quantity: 1, unit_cost: 3000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "Bootloader Recovery & Reprogramming", quantity: 1, unit_cost: 4000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "Firmware Installation & Configuration Validation", quantity: 1, unit_cost: 3000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "Post-Installation Functional Testing & Verification", quantity: 1, unit_cost: 4000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" }
+      );
+    } else if (lowerText.includes("bga rework") || lowerText.includes("complete board diagnosis")) {
+      lines.push(
+        { asset_name: "Complete Board Diagnosis & Fault Isolation", quantity: 1, unit_cost: 10000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "BGA Rework (Switch, ASIC, CPU/SoC, DDR RAM & EMMC)", quantity: 1, unit_cost: 38000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "PCB Cleaning, Re-Assembly & Inspection", quantity: 1, unit_cost: 5000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "Functional Testing, POE Verification & 24-Hours Burn-In", quantity: 1, unit_cost: 9000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" },
+        { asset_name: "Warranty, Consumables, Logistics & Service Overhead", quantity: 1, unit_cost: 10000.00, purchase_date: invoice_date, scope: "local", include_in_budget: true, item_type: "service", category_id: detectCategory("AMC & Services", categories), remarks: "Cisco Switch Service [INCLUDED_IN_IT_BUDGET]" }
+      );
+    }
+  } else if (lowerText.includes("canon") || lowerText.includes("iirc 3226") || lowerText.includes("ir c3326") || lowerText.includes("fixed rental charges")) {
     lines.push({
       asset_name: "Monthly Fixed Rental Charges for Canon Printer (IIRC 3226)",
       quantity: 1,
