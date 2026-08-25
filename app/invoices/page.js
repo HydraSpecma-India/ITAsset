@@ -718,6 +718,35 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
     setStatusMsg("Starting import...");
 
     try {
+      // 1. Ensure categories exist
+      let currentCatMap = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
+      if (currentCatMap.size === 0) {
+        setStatusMsg("Initializing default categories...");
+        const defaultCats = [
+          { name: "Laptops & Desktops", sort_order: 10 },
+          { name: "Server & Storage", sort_order: 20 },
+          { name: "Networking", sort_order: 30 },
+          { name: "Printers & Scanners", sort_order: 40 },
+          { name: "Peripherals & Accessories", sort_order: 50 },
+          { name: "Mobile & Tablet", sort_order: 60 },
+          { name: "Software Licence", sort_order: 70 },
+          { name: "Cloud & Subscription", sort_order: 80 },
+          { name: "UPS & Power", sort_order: 90 },
+          { name: "CCTV & Security", sort_order: 100 },
+          { name: "AMC & Services", sort_order: 110 },
+          { name: "Consumables", sort_order: 120 },
+          { name: "Others", sort_order: 999 },
+        ];
+        const { data: newCats, error: catErr } = await supabase.from("it_categories").insert(defaultCats).select();
+        if (!catErr && newCats) {
+          currentCatMap = new Map(newCats.map((c) => [c.name.toLowerCase(), c.id]));
+          setCategories(newCats);
+        }
+      }
+
+      const defaultCatId = currentCatMap.values().next().value || categories[0]?.id || "";
+
+      // 2. Ensure vendors exist
       const uniqueVendors = new Set(parsed.invoices.map((i) => i.vendor_name).filter(Boolean));
       const vendorMap = new Map(vendors.map((v) => [v.name.toLowerCase(), v.id]));
 
@@ -761,20 +790,24 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         const assetRows = inv.lines.map((l) => ({
           invoice_id: dbInv.id,
           asset_name: l.asset_name,
-          category_id: l.category_id,
-          scope: l.scope,
-          include_in_budget: l.include_in_budget !== false,
-          item_type: l.item_type,
+          category_id: l.category_id || defaultCatId,
+          scope: l.scope || "local",
+          item_type: l.item_type || "hardware",
           quantity: l.quantity,
           unit_cost: l.unit_cost,
           purchase_date: l.purchase_date,
-          status: l.status,
+          status: l.status || "in_use",
           staff_name: l.staff_name || null,
-          remarks: l.remarks
+          remarks: (l.include_in_budget === false ? "[EXCLUDED_FROM_BUDGET] " : "") + (l.remarks || "")
         }));
 
         const { data: dbAssets, error: assetErr } = await supabase.from("it_assets").insert(assetRows).select();
-        if (!assetErr && dbAssets) importedAssets += dbAssets.length;
+        if (assetErr) {
+          console.error(`Asset insertion failed for invoice ${inv.invoice_no}:`, assetErr.message);
+          setErr(`Asset creation error on invoice ${inv.invoice_no}: ` + assetErr.message);
+        } else if (dbAssets) {
+          importedAssets += dbAssets.length;
+        }
       }
 
       setStatusMsg(`Successfully imported ${importedInvoices} invoices and ${importedAssets} asset lines!`);

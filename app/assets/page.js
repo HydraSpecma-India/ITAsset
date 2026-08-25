@@ -36,6 +36,11 @@ export default function AssetsPage() {
 
   const years = useMemo(() => [...new Set(rows.map((r) => r.budget_year))].sort((a, b) => b - a), [rows]);
 
+  function isIncludedInBudget(r) {
+    if (r.remarks && r.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
+    return r.include_in_budget !== false;
+  }
+
   async function toggleScope(r) {
     const nextScope = r.scope === "global" ? "local" : "global";
     setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, scope: nextScope } : item)));
@@ -43,10 +48,16 @@ export default function AssetsPage() {
   }
 
   async function toggleBudgetInclude(r) {
-    const current = r.include_in_budget !== false;
+    const current = isIncludedInBudget(r);
     const nextVal = !current;
-    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal } : item)));
-    await supabase.from("it_assets").update({ include_in_budget: nextVal }).eq("id", r.id);
+    let nextRemarks = r.remarks || "";
+    if (nextVal) {
+      nextRemarks = nextRemarks.replace("[EXCLUDED_FROM_BUDGET] ", "").replace("[EXCLUDED_FROM_BUDGET]", "");
+    } else if (!nextRemarks.includes("[EXCLUDED_FROM_BUDGET]")) {
+      nextRemarks = "[EXCLUDED_FROM_BUDGET] " + nextRemarks;
+    }
+    setRows((prev) => prev.map((item) => (item.id === r.id ? { ...item, include_in_budget: nextVal, remarks: nextRemarks } : item)));
+    await supabase.from("it_assets").update({ remarks: nextRemarks }).eq("id", r.id);
   }
 
   const filtered = useMemo(() => {
@@ -56,8 +67,9 @@ export default function AssetsPage() {
       if (cat !== "all" && r.category_id !== cat) return false;
       if (scope !== "all" && r.scope !== scope) return false;
       if (status !== "all" && r.status !== status) return false;
-      if (budgetFilter === "it_only" && r.include_in_budget === false) return false;
-      if (budgetFilter === "excluded_only" && r.include_in_budget !== false) return false;
+      const isInc = isIncludedInBudget(r);
+      if (budgetFilter === "it_only" && !isInc) return false;
+      if (budgetFilter === "excluded_only" && isInc) return false;
       if (!s) return true;
       return [r.asset_name, r.asset_tag, r.serial_no, r.model, r.staff_name, r.staff_code,
               r.department, r.location, r.remarks, r.it_categories?.name, r.it_invoices?.invoice_no,
