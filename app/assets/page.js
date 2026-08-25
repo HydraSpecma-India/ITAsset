@@ -101,8 +101,23 @@ export default function AssetsPage() {
     const s = q.trim().toLowerCase();
     let out = rows.filter((r) => {
       if (isEmployee) {
-        const myName = (profile?.full_name || "").toLowerCase();
-        if ((r.staff_name || "").toLowerCase() !== myName) return false;
+        const myName = (profile?.full_name || "").trim().toLowerCase();
+        const myEmail = (profile?.email || "").trim().toLowerCase();
+        const nameTokens = myName.split(" ").filter((t) => t.length >= 3);
+
+        const staff = (r.staff_name || "").trim().toLowerCase();
+        const staffCode = (r.staff_code || "").trim().toLowerCase();
+
+        if (!staff && !staffCode) return false;
+
+        const isMatch =
+          staff === myName ||
+          staff === myEmail ||
+          (profile?.staff_code && staffCode === profile.staff_code.trim().toLowerCase()) ||
+          nameTokens.some((tok) => staff.includes(tok)) ||
+          (staff.length >= 3 && (myName.includes(staff) || myEmail.includes(staff)));
+
+        if (!isMatch) return false;
       }
       if (year !== "all" && r.budget_year !== Number(year)) return false;
       if (month !== "all") {
