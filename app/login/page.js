@@ -47,13 +47,31 @@ export default function LoginPage() {
       return;
     }
 
-    // 2. Check employee default credentials in it_users table
-    const { data: prof } = await supabase.from("it_users").select("*").eq("email", cleanEmail).maybeSingle();
-    if (prof && prof.is_active !== false) {
-      const firstName = (prof.full_name || "").trim().split(" ")[0].toLowerCase();
-      const expectedPass = (prof.default_password || `${firstName.substring(0, 5)}@2026`).toLowerCase();
+    // 2. Check employee default credentials in it_users table or it_employees table
+    let prof = null;
+    const { data: userProf } = await supabase.from("it_users").select("*").ilike("email", cleanEmail).maybeSingle();
+    if (userProf) {
+      prof = userProf;
+    } else {
+      const { data: empProf } = await supabase.from("it_employees").select("*").ilike("email", cleanEmail).maybeSingle();
+      if (empProf) {
+        prof = {
+          id: empProf.id,
+          email: empProf.email,
+          full_name: empProf.full_name,
+          role: "employee",
+          department: empProf.department,
+          is_active: empProf.is_active,
+        };
+      }
+    }
 
-      if (password.trim() === expectedPass || password.trim() === prof.default_password) {
+    if (prof && prof.is_active !== false) {
+      const firstName = (prof.full_name || "").trim().split(" ")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+      const defaultFormula = `${firstName.substring(0, 5)}@2026`;
+      const inputPass = password.trim().toLowerCase();
+
+      if (inputPass === defaultFormula || (prof.default_password && inputPass === prof.default_password.toLowerCase())) {
         if (typeof window !== "undefined") {
           localStorage.setItem("itbm_local_user", JSON.stringify(prof));
         }
