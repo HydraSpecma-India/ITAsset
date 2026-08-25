@@ -79,6 +79,18 @@ export default function InvoicesPage() {
     load();
   }
 
+  async function deleteAllInvoices() {
+    if (!confirm(`Are you sure you want to delete ALL ${invoices.length} invoices and asset records? This will clear all existing test data.`)) return;
+    setLoading(true);
+    const { data: allInvoices } = await supabase.from("it_invoices").select("id");
+    if (allInvoices && allInvoices.length > 0) {
+      for (const inv of allInvoices) {
+        await supabase.from("it_invoices").delete().eq("id", inv.id);
+      }
+    }
+    load();
+  }
+
   function exportCsv() {
     csvDownload("invoices.csv", filtered.map((i) => ({
       invoice_no: i.invoice_no, invoice_date: i.invoice_date, vendor: i.vendor_name || "",
@@ -96,6 +108,11 @@ export default function InvoicesPage() {
           <button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>
           {isAdmin && (
             <>
+              {invoices.length > 0 && (
+                <button className="btn danger sm" onClick={deleteAllInvoices}>
+                  🗑️ Clear All Invoices
+                </button>
+              )}
               <button className="btn ghost sm" onClick={() => setImportOpen(true)} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
                 📥 Import Excel / CSV
               </button>
@@ -516,13 +533,17 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         const dateIdx = findCol(["order date", "invoice date", "purchase date", "date"]);
         const idIdx = findCol(["order id", "invoice no", "invoice_no", "invoice number", "po number", "id"]);
         const poIdx = findCol(["po number", "po_number", "po"]);
-        const titleIdx = findCol(["title", "product name", "item name", "asset name", "description", "product"]);
+        
+        let titleIdx = headers.indexOf("title");
+        if (titleIdx === -1) titleIdx = headers.findIndex((h) => h === "product name" || h === "item name" || h === "asset name");
+        if (titleIdx === -1) titleIdx = headers.findIndex((h) => h.includes("title") || (h.includes("product") && !h.includes("amazon-internal")));
+        if (titleIdx === -1) titleIdx = 0;
+
         const qtyIdx = findCol(["item quantity", "order quantity", "quantity", "qty"]);
         const ppuIdx = findCol(["purchase ppu", "unit price", "unit cost", "price", "listed ppu", "ppu"]);
         const taxIdx = findCol(["item & shipping tax", "tax amount", "order tax", "tax"]);
         const totalIdx = findCol(["item net total", "order net total", "total", "net total", "subtotal"]);
         const vendorIdx = findCol(["seller name", "vendor", "seller", "supplier"]);
-        const catIdx = findCol(["family", "amazon-internal product category", "category", "type"]);
         const userIdx = findCol(["account user", "user", "staff", "receiver name", "employee"]);
 
         const defaultCatId = categories[0]?.id || "";
@@ -556,13 +577,13 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
 
           // Intelligent Title Classification
           const t = title.toLowerCase();
-          const findCat = (name) => categories.find((c) => c.name.toLowerCase().includes(name.toLowerCase()))?.id;
+          const getCat = (n) => categories.find((c) => c.name.toLowerCase().includes(n.toLowerCase()))?.id;
 
           let matchedCatId = defaultCatId;
           if (t.includes("toner") || t.includes("cartridge") || t.includes("ink") || t.includes("thermal paper") || t.includes("chempure") || t.includes("ipa") || t.includes("isopropyl")) {
-            matchedCatId = findCat("Consumables") || findCat("Printers") || defaultCatId;
-          } else if (t.includes("inspection") || t.includes("amc") || t.includes("service contract")) {
-            matchedCatId = findCat("AMC") || findCat("Services") || defaultCatId;
+            matchedCatId = getCat("consumables") || getCat("printers") || defaultCatId;
+          } else if (t.includes("inspection") || t.includes("amc") || t.includes("service")) {
+            matchedCatId = getCat("amc") || getCat("services") || defaultCatId;
           } else if (
             t.includes("keyboard") || t.includes("mouse") || t.includes("webcam") ||
             t.includes("backpack") || t.includes("bag") || t.includes("messenger") ||
@@ -571,13 +592,13 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
             t.includes("cable") || t.includes("hdmi") || t.includes("displayport") || t.includes("dock") || t.includes("stand") || t.includes("sdcard") || t.includes("micro sd") ||
             t.includes("charger") || t.includes("adapter")
           ) {
-            matchedCatId = findCat("Peripherals") || findCat("Accessories") || defaultCatId;
-          } else if (t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("mobile") || t.includes("landline")) {
-            matchedCatId = findCat("Mobile") || findCat("Tablet") || defaultCatId;
+            matchedCatId = getCat("peripherals") || getCat("accessories") || defaultCatId;
+          } else if (t.includes("iphone") || t.includes("pixel") || t.includes("galaxy") || t.includes("tab ") || t.includes("mobile") || t.includes("landline")) {
+            matchedCatId = getCat("mobile") || getCat("tablet") || defaultCatId;
           } else if (t.includes("ups") || t.includes("battery") || t.includes("power socket") || t.includes("power cord") || t.includes("inverter")) {
-            matchedCatId = findCat("UPS") || findCat("Power") || defaultCatId;
+            matchedCatId = getCat("ups") || getCat("power") || defaultCatId;
           } else if (t.includes("laptop") || t.includes("desktop pc") || t.includes("thinkpad") || t.includes("latitude")) {
-            matchedCatId = findCat("Laptops") || findCat("Desktops") || defaultCatId;
+            matchedCatId = getCat("laptops") || getCat("desktops") || defaultCatId;
           }
 
           if (!invoicesMap.has(orderId)) {
