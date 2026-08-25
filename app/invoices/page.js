@@ -510,6 +510,24 @@ function InvoiceForm({ value, categories, vendors, employees = [], departments =
       };
 
       let invoiceId = inv.id;
+      if (!invoiceId) {
+        const { data: existing } = await supabase
+          .from("it_invoices")
+          .select("id, invoice_no")
+          .eq("invoice_no", head.invoice_no)
+          .maybeSingle();
+
+        if (existing) {
+          const proceed = window.confirm(
+            `⚠️ DUPLICATE INVOICE DETECTED:\n\nInvoice number "${head.invoice_no}" already exists in the system!\n\nClick OK to save as a duplicate anyway, or Cancel to abort.`
+          );
+          if (!proceed) {
+            setBusy(false);
+            return;
+          }
+        }
+      }
+
       if (invoiceId) {
         const { error } = await supabase.from("it_invoices").update(head).eq("id", invoiceId);
         if (error) throw error;
@@ -937,6 +955,18 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
+  const [existingDuplicates, setExistingDuplicates] = useState([]);
+  const [dupOption, setDupOption] = useState("skip"); // "skip" | "overwrite" | "allow"
+
+  async function checkDuplicatesForParsedInvoices(invList) {
+    const invNos = invList.map((i) => i.invoice_no).filter(Boolean);
+    if (!invNos.length) return;
+    const { data } = await supabase
+      .from("it_invoices")
+      .select("id, invoice_no, invoice_date")
+      .in("invoice_no", invNos);
+    setExistingDuplicates(data || []);
+  }
 
   function parseCSV(text) {
     const lines = [];
@@ -980,6 +1010,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
     if (!f) return;
     setFile(f);
     setErr("");
+    setExistingDuplicates([]);
 
     if (f.name.toLowerCase().endsWith(".pdf")) {
       setBusy(true);
@@ -996,6 +1027,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           const totalLines = parsedInv.lines.length;
           const totalSpend = parsedInv.lines.reduce((sum, l) => sum + (l.quantity * l.unit_cost), 0) + parsedInv.tax_amount;
           setParsed({ invoices: [parsedInv], totalLines, totalSpend });
+          checkDuplicatesForParsedInvoices([parsedInv]);
         })
         .catch((err) => {
           setBusy(false);
@@ -1178,6 +1210,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         const totalSpend = invList.reduce((a, i) => a + i.lines.reduce((lA, l) => lA + l.quantity * l.unit_cost, 0) + i.tax_amount, 0);
 
         setParsed({ invoices: invList, totalLines, totalSpend });
+        checkDuplicatesForParsedInvoices(invList);
       } catch (err) {
         setErr("Failed to parse CSV file: " + err.message);
       }
@@ -1234,15 +1267,32 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
 
       let importedInvoices = 0;
       let importedAssets = 0;
+      let skippedInvoices = 0;
 
       for (const inv of parsed.invoices) {
-        setStatusMsg(`Importing invoice ${inv.invoice_no}...`);
+        const existing = existingDuplicates.find((d) => d.invoice_no.toLowerCase() === inv.invoice_no.toLowerCase());
+        
+        let targetInvoiceNo = inv.invoice_no;
+        if (existing) {
+          if (dupOption === "skip") {
+            skippedInvoices++;
+            continue;
+          } else if (dupOption === "overwrite") {
+            setStatusMsg(`Overwriting existing invoice ${inv.invoice_no}...`);
+            await supabase.from("it_assets").delete().eq("invoice_id", existing.id);
+            await supabase.from("it_invoices").delete().eq("id", existing.id);
+          } else if (dupOption === "allow") {
+            targetInvoiceNo = `${inv.invoice_no}-COPY`;
+          }
+        }
+
+        setStatusMsg(`Importing invoice ${targetInvoiceNo}...`);
         const vendorId = vendorMap.get((inv.vendor_name || "").toLowerCase()) || null;
 
         const { data: dbInv, error: invErr } = await supabase
           .from("it_invoices")
           .insert({
-            invoice_no: inv.invoice_no,
+            invoice_no: targetInvoiceNo,
             invoice_date: inv.invoice_date,
             vendor_id: vendorId,
             po_number: inv.po_number || null,
@@ -1284,10 +1334,14 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         }
       }
 
-      setStatusMsg(`Successfully imported ${importedInvoices} invoices and ${importedAssets} asset lines!`);
+      let summaryText = `Import complete: ${importedInvoices} invoice(s) and ${importedAssets} asset line(s) imported.`;
+      if (skippedInvoices > 0) {
+        summaryText += ` (${skippedInvoices} duplicate invoice(s) skipped)`;
+      }
+      setStatusMsg(summaryText);
       setTimeout(() => {
         onImported();
-      }, 1200);
+      }, 1500);
     } catch (e) {
       setErr("Import failed: " + (e.message || String(e)));
     } finally {
@@ -1307,6 +1361,31 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         </label>
         {file && <div style={{ marginTop: 10, fontSize: 13, color: "var(--gold)" }}>Selected: <strong>{file.name}</strong></div>}
       </div>
+
+      {parsed && existingDuplicates.length > 0 && (
+        <div className="card" style={{ padding: 14, marginBottom: 16, border: "1px solid var(--gold)", background: "rgba(255,204,0,0.06)" }}>
+          <div style={{ fontWeight: 600, color: "var(--gold)", marginBottom: 6 }}>
+            ⚠️ Consent Required: {existingDuplicates.length} Duplicate Invoice(s) Detected
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>
+            Invoice number(s) already exist in your database: <strong>{existingDuplicates.map((d) => d.invoice_no).join(", ")}</strong>
+          </div>
+          <div style={{ display: "flex", gap: 16, fontSize: 13, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: dupOption === "skip" ? 600 : 400 }}>
+              <input type="radio" name="dupOpt" value="skip" checked={dupOption === "skip"} onChange={() => setDupOption("skip")} />
+              <span>Skip Duplicates (Recommended)</span>
+            </label>
+            <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: dupOption === "overwrite" ? 600 : 400 }}>
+              <input type="radio" name="dupOpt" value="overwrite" checked={dupOption === "overwrite"} onChange={() => setDupOption("overwrite")} />
+              <span>Overwrite Existing Invoice</span>
+            </label>
+            <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: dupOption === "allow" ? 600 : 400 }}>
+              <input type="radio" name="dupOpt" value="allow" checked={dupOption === "allow"} onChange={() => setDupOption("allow")} />
+              <span>Import as Copy (-COPY)</span>
+            </label>
+          </div>
+        </div>
+      )}
 
       {parsed && (
         <>
@@ -1338,10 +1417,13 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
                 </tr>
               </thead>
               <tbody>
-                {parsed.invoices.slice(0, 15).flatMap((inv) =>
-                  inv.lines.map((l, lIdx) => (
-                    <tr key={`${inv.invoice_no}-${lIdx}`}>
-                      <td style={{ fontWeight: 600 }}>{inv.invoice_no}</td>
+                {parsed.invoices.slice(0, 15).flatMap((inv) => {
+                  const isDup = existingDuplicates.some((d) => d.invoice_no.toLowerCase() === inv.invoice_no.toLowerCase());
+                  return inv.lines.map((l, lIdx) => (
+                    <tr key={`${inv.invoice_no}-${lIdx}`} style={{ background: isDup ? "rgba(255,204,0,0.06)" : "transparent" }}>
+                      <td style={{ fontWeight: 600 }}>
+                        {inv.invoice_no} {isDup && <span className="pill gold" style={{ fontSize: 10, marginLeft: 4 }}>Duplicate</span>}
+                      </td>
                       <td className="mono" style={{ fontSize: 12 }}>{dateStr(inv.invoice_date)}</td>
                       <td style={{ color: "var(--muted)" }}>{inv.vendor_name}</td>
                       <td>{l.asset_name}</td>
@@ -1349,8 +1431,8 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
                       <td className="num mono">{money(l.unit_cost)}</td>
                       <td className="num mono" style={{ fontWeight: 600 }}>{money(l.quantity * l.unit_cost)}</td>
                     </tr>
-                  ))
-                )}
+                  ));
+                })}
               </tbody>
             </table>
           </div>
@@ -1367,4 +1449,3 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
     </Modal>
   );
 }
-
