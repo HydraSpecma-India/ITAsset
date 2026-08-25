@@ -26,6 +26,20 @@ export default function Shell({ title, subtitle, actions, children }) {
   const { user, profile, loading, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [theme, setTheme] = useState("dark");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("itbm_theme") || "dark";
+    setTheme(saved);
+    document.documentElement.setAttribute("data-theme", saved);
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("itbm_theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+  };
 
   useEffect(() => {
     if (loading) return;
@@ -84,6 +98,9 @@ export default function Shell({ title, subtitle, actions, children }) {
           </div>
           <div className="topbar-right">
             {actions}
+            <button className="btn ghost sm" onClick={toggleTheme} title="Toggle Dark/Light Mode" style={{ borderRadius: 20, padding: "4px 12px" }}>
+              {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+            </button>
             <span className={`pill ${isAdmin ? "gold" : "blue"}`}>{isAdmin ? "Admin" : "Viewer"}</span>
             <div className="avatar" title={profile.email}>{initials}</div>
           </div>

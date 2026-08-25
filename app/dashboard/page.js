@@ -119,6 +119,63 @@ export default function DashboardPage() {
 
   const overspent = byCategory.filter((c) => c.consumed > c.budget && c.budget > 0);
 
+  const [drilldown, setDrilldown] = useState(null);
+
+  const openDrilldown = (title, filteredItems) => {
+    const totalVal = filteredItems.reduce((sum, item) => sum + Number(item.line_total || 0), 0);
+    setDrilldown({
+      title,
+      items: filteredItems,
+      totalVal,
+    });
+  };
+
+  const handleKpiClick = (type) => {
+    if (type === "budget") {
+      openDrilldown(`IT Budget Allocation (${year})`, assets);
+    } else if (type === "consumed") {
+      openDrilldown(`IT Consumed Purchases (${year})`, itAssets);
+    } else if (type === "balance") {
+      openDrilldown(`Active IT Assets (${year})`, itAssets);
+    } else if (type === "expiry") {
+      openDrilldown(`Upcoming Expiries & Renewals`, upcoming);
+    }
+  };
+
+  const handleCategoryClick = (catRow) => {
+    const matching = assets.filter((a) => (a.it_categories?.name || "Others").toLowerCase() === catRow.label.toLowerCase());
+    openDrilldown(`Category: ${catRow.label} (${year})`, matching);
+  };
+
+  const handleMonthlyClick = (colData, colIndex) => {
+    const monthNum = String(colIndex + 1).padStart(2, "0");
+    const matching = assets.filter((a) => (a.purchase_date || "").substring(5, 7) === monthNum);
+    openDrilldown(`Monthly Spend: ${colData.label} ${year}`, matching);
+  };
+
+  const handleScopeClick = (scopeKey) => {
+    const scopeLabel = scopeKey === "global" ? "Global" : "Local";
+    const matching = itAssets.filter((a) => a.scope === scopeKey);
+    openDrilldown(`${scopeLabel} Staff IT Purchases (${year})`, matching);
+  };
+
+  const exportDrilldownCsv = (title, items) => {
+    csvDownload(`${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}.csv`, items.map((r) => ({
+      "Asset Name": r.asset_name,
+      "Purchase Date": r.purchase_date,
+      "Invoice Number": r.it_invoices?.invoice_no || "",
+      "Vendor Name": r.it_invoices?.it_vendors?.name || "",
+      "Category": r.it_categories?.name || r.category_name || "",
+      "Scope": r.scope === "global" ? "Global" : "Local",
+      "Included in IT Budget?": isIncludedInBudget(r) ? "Yes (IT Budget)" : "No (Admin/Dept)",
+      "Quantity": r.quantity || 1,
+      "Unit Cost": r.unit_cost || r.line_total,
+      "Line Total": r.line_total || 0,
+      "Assigned Staff": r.staff_name || "",
+      "Status": r.status || "in_use",
+    })));
+  };
+
   return (
     <Shell
       title="Dashboard"
@@ -134,19 +191,21 @@ export default function DashboardPage() {
       ) : (
         <div className="grid" style={{ gap: 16 }}>
           <div className="grid g4">
-            <Kpi label={`Budget ${year}`} value={money(totals.budget)} foot={`${summary.length} budget lines`} tone="gold" />
-            <Kpi label="Consumed" value={money(totals.consumed)} foot={`${assets.length} purchase lines`} />
+            <Kpi label={`Budget ${year}`} value={money(totals.budget)} foot={`${summary.length} budget lines`} tone="gold" onClick={() => handleKpiClick("budget")} />
+            <Kpi label="Consumed" value={money(totals.consumed)} foot={`${assets.length} purchase lines`} onClick={() => handleKpiClick("consumed")} />
             <Kpi
               label="Balance available"
               value={money(totals.balance)}
               foot={`${totals.pct.toFixed(1)}% of budget used`}
               tone={totals.balance < 0 ? "bad" : totals.pct >= 90 ? "warn" : "good"}
+              onClick={() => handleKpiClick("balance")}
             />
             <Kpi
               label="Expiring in 90 days"
               value={alertBuckets.expired.length + alertBuckets.critical.length + alertBuckets.soon.length}
               foot={`${alertBuckets.expired.length} already expired`}
               tone={alertBuckets.expired.length || alertBuckets.critical.length ? "bad" : "good"}
+              onClick={() => handleKpiClick("expiry")}
             />
           </div>
 
@@ -157,7 +216,7 @@ export default function DashboardPage() {
                   const b = totals[k].b, c = totals[k].c;
                   const p = b ? (c / b) * 100 : 0;
                   return (
-                    <div key={k}>
+                    <div key={k} onClick={() => handleScopeClick(k)} style={{ cursor: "pointer" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                         <span style={{ color: "var(--muted)" }}>{lbl}</span>
                         <span className="mono" style={{ fontSize: 12.5 }}>
@@ -183,23 +242,24 @@ export default function DashboardPage() {
                 ]}
                 total={totals.consumed}
                 caption="Spend split by staff scope"
+                onSliceClick={(s) => handleScopeClick(s.label.toLowerCase().includes("global") ? "global" : "local")}
               />
             </div>
           </Card>
 
           <div className="grid g2">
-            <Card title="Budget vs consumed" hint="By category" actions={<Link href="/budgets" className="btn ghost sm">Details</Link>}>
-              <GroupedBars rows={byCategory} />
+            <Card title="Budget vs consumed" hint="By category (click any bar to view details)" actions={<Link href="/budgets" className="btn ghost sm">Details</Link>}>
+              <GroupedBars rows={byCategory} onBarClick={handleCategoryClick} />
             </Card>
             <div className="grid" style={{ gap: 16, alignContent: "start" }}>
-              <Card title="Monthly spend" hint={`Purchases booked in ${year}`}>
-                <Columns data={monthly} />
+              <Card title="Monthly spend" hint={`Purchases booked in ${year} (click bar for details)`}>
+                <Columns data={monthly} onColClick={handleMonthlyClick} />
               </Card>
               {overspent.length > 0 && (
                 <Card title="Over budget">
                   <div style={{ display: "grid", gap: 8 }}>
                     {overspent.map((c) => (
-                      <div key={c.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <div key={c.label} onClick={() => handleCategoryClick(c)} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, cursor: "pointer" }}>
                         <span style={{ color: "var(--muted)" }}>{c.label}</span>
                         <span className="mono" style={{ color: "var(--red)" }}>
                           +{moneyShort(c.consumed - c.budget)}
@@ -232,7 +292,7 @@ export default function DashboardPage() {
                     {upcoming.map((a, i) => {
                       const st = expiryState(a.d);
                       return (
-                        <tr key={i}>
+                        <tr key={i} onClick={() => openDrilldown(`Expiry Detail: ${a.asset_name}`, [a])} style={{ cursor: "pointer" }}>
                           <td>{a.asset_name}{a.asset_tag ? ` · ${a.asset_tag}` : ""}</td>
                           <td>{a.alert_type}</td>
                           <td style={{ color: "var(--muted)" }}>{a.category_name}</td>
@@ -247,6 +307,57 @@ export default function DashboardPage() {
               </div>
             )}
           </Card>
+
+          {drilldown && (
+            <Modal wide title={drilldown.title} onClose={() => setDrilldown(null)}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                  Total <strong>{drilldown.items.length}</strong> item(s) line total: <strong className="mono" style={{ color: "var(--gold)" }}>{money(drilldown.totalVal)}</strong>
+                </div>
+                <button className="btn sm" onClick={() => exportDrilldownCsv(drilldown.title, drilldown.items)}>
+                  📥 Export Drilldown CSV
+                </button>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Invoice</th>
+                      <th>Purchase Date</th>
+                      <th>Asset Name</th>
+                      <th>Category</th>
+                      <th>Scope</th>
+                      <th>Assigned Staff</th>
+                      <th className="num">Qty</th>
+                      <th className="num">Unit Cost</th>
+                      <th className="num">Total</th>
+                      <th>IT Budget?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drilldown.items.map((a, idx) => (
+                      <tr key={a.id || idx}>
+                        <td style={{ fontWeight: 600 }}>{a.it_invoices?.invoice_no || "—"}</td>
+                        <td className="mono">{dateStr(a.purchase_date || a.expiry_date)}</td>
+                        <td style={{ fontWeight: 500 }}>{a.asset_name}</td>
+                        <td style={{ color: "var(--muted)" }}>{a.it_categories?.name || a.category_name || "—"}</td>
+                        <td><span className={`pill ${a.scope === "global" ? "blue" : "grey"}`}>{a.scope === "global" ? "Global" : "Local"}</span></td>
+                        <td style={{ color: "var(--muted)" }}>{a.staff_name || "—"}</td>
+                        <td className="num mono">{a.quantity || 1}</td>
+                        <td className="num mono">{money(a.unit_cost || a.line_total)}</td>
+                        <td className="num mono" style={{ fontWeight: 600 }}>{money(a.line_total || 0)}</td>
+                        <td>
+                          <span className={`pill ${isIncludedInBudget(a) ? "gold" : "red"}`}>
+                            {isIncludedInBudget(a) ? "✓ IT Budget" : "✕ Admin/Dept"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Modal>
+          )}
         </div>
       )}
     </Shell>

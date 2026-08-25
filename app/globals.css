@@ -268,3 +268,65 @@ tfoot td { padding: 10px 11px; border-top: 1px solid var(--gold); font-weight: 7
 
 .loading { padding: 60px; text-align: center; color: var(--hs-silver); }
 
+/* ------------------------------------------------------------ Light Theme Overrides */
+[data-theme="light"] body {
+  background: #F4F6F9;
+  color: #1A1D23;
+}
+[data-theme="light"] .sidebar {
+  background: #1B2129;
+  border-right-color: #2D3542;
+}
+[data-theme="light"] .topbar {
+  background: #FFFFFF;
+  border-bottom-color: #E2E8F0;
+  color: #0F172A;
+}
+[data-theme="light"] h1, [data-theme="light"] h2, [data-theme="light"] h3, [data-theme="light"] h4 {
+  color: #0F172A;
+}
+[data-theme="light"] .card {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+[data-theme="light"] .card-head {
+  background: #F8FAFC;
+  border-bottom-color: #E2E8F0;
+}
+[data-theme="light"] input, [data-theme="light"] select, [data-theme="light"] textarea {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+[data-theme="light"] thead th {
+  background: #F1F5F9;
+  color: #475569;
+  border-bottom-color: #CBD5E1;
+}
+[data-theme="light"] tbody td {
+  border-bottom-color: #F1F5F9;
+  color: #1E293B;
+}
+[data-theme="light"] tbody tr:hover {
+  background: rgba(255, 204, 0, 0.12);
+}
+[data-theme="light"] .modal {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+  color: #0F172A;
+}
+[data-theme="light"] .modal .card-head {
+  background: #F8FAFC;
+  border-bottom-color: #E2E8F0;
+}
+[data-theme="light"] .kpi-label {
+  color: #64748B;
+}
+[data-theme="light"] .pill.grey {
+  background: #E2E8F0;
+  color: #334155;
+  border-color: #CBD5E1;
+}
+
+
