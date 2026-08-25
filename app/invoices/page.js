@@ -26,6 +26,7 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [detail, setDetail] = useState(null);
 
@@ -94,9 +95,14 @@ export default function InvoicesPage() {
         <>
           <button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>
           {isAdmin && (
-            <button className="btn sm" onClick={() => { setEditing({ invoice_no: "", invoice_date: todayISO(), vendor_id: "", po_number: "", currency: "INR", tax_amount: 0, other_charges: 0, notes: "", attachment_path: "", lines: [blankLine()] }); setOpen(true); }}>
-              + New invoice
-            </button>
+            <>
+              <button className="btn ghost sm" onClick={() => setImportOpen(true)} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
+                📥 Import Excel / CSV
+              </button>
+              <button className="btn sm" onClick={() => { setEditing({ invoice_no: "", invoice_date: todayISO(), vendor_id: "", po_number: "", currency: "INR", tax_amount: 0, other_charges: 0, notes: "", attachment_path: "", lines: [blankLine()] }); setOpen(true); }}>
+                + New invoice
+              </button>
+            </>
           )}
         </>
       }
@@ -155,6 +161,15 @@ export default function InvoicesPage() {
           userId={profile.id}
           onClose={() => setOpen(false)}
           onSaved={() => { setOpen(false); load(); }}
+        />
+      )}
+
+      {importOpen && (
+        <CsvImportModal
+          categories={categories}
+          vendors={vendors}
+          onClose={() => setImportOpen(false)}
+          onImported={() => { setImportOpen(false); load(); }}
         />
       )}
 
@@ -438,3 +453,301 @@ function InvoiceForm({ value, categories, vendors, userId, onClose, onSaved }) {
     </Modal>
   );
 }
+
+function CsvImportModal({ categories, vendors, onClose, onImported }) {
+  const [file, setFile] = useState(null);
+  const [parsed, setParsed] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [statusMsg, setStatusMsg] = useState("");
+
+  function parseCSV(text) {
+    const lines = [];
+    let row = [];
+    let inQuotes = false;
+    let current = "";
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const next = text[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && next === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(current.trim());
+        current = "";
+      } else if ((char === '\r' || char === '\n') && !inQuotes) {
+        if (char === '\r' && next === '\n') i++;
+        row.push(current.trim());
+        if (row.length > 1 || row[0] !== "") lines.push(row);
+        row = [];
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    if (current || row.length > 0) {
+      row.push(current.trim());
+      lines.push(row);
+    }
+    return lines;
+  }
+
+  function handleFileSelect(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    setErr("");
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target.result;
+        const rows = parseCSV(text);
+        if (rows.length < 2) return setErr("CSV file appears to be empty or missing headers.");
+
+        const headers = rows[0].map((h) => h.trim().toLowerCase());
+        const findCol = (keys) => headers.findIndex((h) => keys.some((k) => h.includes(k)));
+
+        const dateIdx = findCol(["order date", "invoice date", "purchase date", "date"]);
+        const idIdx = findCol(["order id", "invoice no", "invoice_no", "invoice number", "po number", "id"]);
+        const poIdx = findCol(["po number", "po_number", "po"]);
+        const titleIdx = findCol(["title", "product name", "item name", "asset name", "description", "product"]);
+        const qtyIdx = findCol(["item quantity", "order quantity", "quantity", "qty"]);
+        const ppuIdx = findCol(["purchase ppu", "unit price", "unit cost", "price", "listed ppu", "ppu"]);
+        const taxIdx = findCol(["item & shipping tax", "tax amount", "order tax", "tax"]);
+        const totalIdx = findCol(["item net total", "order net total", "total", "net total", "subtotal"]);
+        const vendorIdx = findCol(["seller name", "vendor", "seller", "supplier"]);
+        const catIdx = findCol(["family", "amazon-internal product category", "category", "type"]);
+        const userIdx = findCol(["account user", "user", "staff", "receiver name", "employee"]);
+
+        const defaultCatId = categories[0]?.id || "";
+        const invoicesMap = new Map();
+
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          if (!r || r.length < 3) continue;
+
+          const rawDate = r[dateIdx] || "";
+          let orderDate = todayISO();
+          if (rawDate) {
+            const parts = rawDate.split("-");
+            if (parts.length === 3) {
+              const [d, m, y] = parts;
+              if (d.length === 2 && y.length === 4) orderDate = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+              else if (d.length === 4 && y.length === 2) orderDate = `${d}-${m.padStart(2, "0")}-${y.padStart(2, "0")}`;
+              else orderDate = rawDate;
+            }
+          }
+
+          const orderId = r[idIdx] || `IMP-${i}`;
+          const poNumber = r[poIdx] || "";
+          const sellerName = (r[vendorIdx] || "Amazon / Supplier").trim();
+          const title = (r[titleIdx] || "IT Purchase Item").trim();
+          const qty = parseInt(r[qtyIdx]) || 1;
+          const totalVal = parseFloat(r[totalIdx]) || 0;
+          const unitCost = parseFloat(r[ppuIdx]) || (totalVal ? totalVal / qty : 0);
+          const taxAmt = parseFloat(r[taxIdx]) || 0;
+          const catStr = r[catIdx] || "";
+          const staff = r[userIdx] || "";
+
+          let matchedCatId = defaultCatId;
+          for (const c of categories) {
+            if ((catStr + " " + title).toLowerCase().includes(c.name.toLowerCase())) {
+              matchedCatId = c.id;
+              break;
+            }
+          }
+
+          if (!invoicesMap.has(orderId)) {
+            invoicesMap.set(orderId, {
+              invoice_no: orderId,
+              invoice_date: orderDate,
+              vendor_name: sellerName,
+              po_number: poNumber,
+              tax_amount: 0,
+              lines: []
+            });
+          }
+
+          const inv = invoicesMap.get(orderId);
+          inv.tax_amount += taxAmt;
+          inv.lines.push({
+            asset_name: title,
+            category_id: matchedCatId,
+            scope: "local",
+            item_type: "hardware",
+            quantity: qty,
+            unit_cost: unitCost,
+            purchase_date: orderDate,
+            status: "in_use",
+            staff_name: staff,
+            remarks: `Vendor: ${sellerName} | Imported from CSV`
+          });
+        }
+
+        const invList = Array.from(invoicesMap.values());
+        const totalLines = invList.reduce((a, i) => a + i.lines.length, 0);
+        const totalSpend = invList.reduce((a, i) => a + i.lines.reduce((lA, l) => lA + l.quantity * l.unit_cost, 0) + i.tax_amount, 0);
+
+        setParsed({ invoices: invList, totalLines, totalSpend });
+      } catch (err) {
+        setErr("Failed to parse CSV file: " + err.message);
+      }
+    };
+    reader.readAsText(f);
+  }
+
+  async function executeImport() {
+    if (!parsed || !parsed.invoices.length) return;
+    setBusy(true);
+    setErr("");
+    setStatusMsg("Starting import...");
+
+    try {
+      const uniqueVendors = new Set(parsed.invoices.map((i) => i.vendor_name).filter(Boolean));
+      const vendorMap = new Map(vendors.map((v) => [v.name.toLowerCase(), v.id]));
+
+      for (const vName of uniqueVendors) {
+        if (!vendorMap.has(vName.toLowerCase())) {
+          setStatusMsg(`Creating vendor: ${vName}...`);
+          const { data, error } = await supabase.from("it_vendors").insert({ name: vName }).select().single();
+          if (!error && data) vendorMap.set(vName.toLowerCase(), data.id);
+        }
+      }
+
+      let importedInvoices = 0;
+      let importedAssets = 0;
+
+      for (const inv of parsed.invoices) {
+        setStatusMsg(`Importing invoice ${inv.invoice_no}...`);
+        const vendorId = vendorMap.get((inv.vendor_name || "").toLowerCase()) || null;
+
+        const { data: dbInv, error: invErr } = await supabase
+          .from("it_invoices")
+          .insert({
+            invoice_no: inv.invoice_no,
+            invoice_date: inv.invoice_date,
+            vendor_id: vendorId,
+            po_number: inv.po_number || null,
+            currency: "INR",
+            tax_amount: inv.tax_amount,
+            other_charges: 0,
+            notes: "Imported via CSV Importer"
+          })
+          .select("id")
+          .single();
+
+        if (invErr) {
+          console.warn(`Invoice ${inv.invoice_no} skipped/failed:`, invErr.message);
+          continue;
+        }
+
+        importedInvoices++;
+
+        const assetRows = inv.lines.map((l) => ({
+          invoice_id: dbInv.id,
+          asset_name: l.asset_name,
+          category_id: l.category_id,
+          scope: l.scope,
+          item_type: l.item_type,
+          quantity: l.quantity,
+          unit_cost: l.unit_cost,
+          purchase_date: l.purchase_date,
+          status: l.status,
+          staff_name: l.staff_name || null,
+          remarks: l.remarks
+        }));
+
+        const { data: dbAssets, error: assetErr } = await supabase.from("it_assets").insert(assetRows).select();
+        if (!assetErr && dbAssets) importedAssets += dbAssets.length;
+      }
+
+      setStatusMsg(`Successfully imported ${importedInvoices} invoices and ${importedAssets} asset lines!`);
+      setTimeout(() => {
+        onImported();
+      }, 1200);
+    } catch (e) {
+      setErr("Import failed: " + (e.message || String(e)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal wide title="Import Invoices & Assets from Excel / CSV" onClose={onClose}>
+      {err && <div className="alert err">{err}</div>}
+      {statusMsg && <div className="alert ok">{statusMsg}</div>}
+
+      <div className="card" style={{ padding: 20, marginBottom: 16, textAlign: "center", border: "2px dashed var(--hs-charcoal)", background: "rgba(15,18,22,0.6)" }}>
+        <input type="file" accept=".csv" id="csvFileInput" style={{ display: "none" }} onChange={handleFileSelect} />
+        <label htmlFor="csvFileInput" className="btn ghost" style={{ cursor: "pointer" }}>
+          📁 Choose Amazon Orders CSV / Excel File
+        </label>
+        {file && <div style={{ marginTop: 10, fontSize: 13, color: "var(--gold)" }}>Selected: <strong>{file.name}</strong></div>}
+      </div>
+
+      {parsed && (
+        <>
+          <div className="grid g3" style={{ marginBottom: 16 }}>
+            <div className="card kpi">
+              <div className="kpi-label">Unique Invoices</div>
+              <div className="kpi-value" style={{ color: "var(--gold)" }}>{parsed.invoices.length}</div>
+            </div>
+            <div className="card kpi">
+              <div className="kpi-label">Total Asset Lines</div>
+              <div className="kpi-value" style={{ color: "var(--text)" }}>{parsed.totalLines}</div>
+            </div>
+            <div className="card kpi">
+              <div className="kpi-label">Total Value</div>
+              <div className="kpi-value" style={{ color: "var(--green)" }}>{money(parsed.totalSpend)}</div>
+            </div>
+          </div>
+
+          <div className="card-head" style={{ marginBottom: 10 }}>
+            <h3>Preview Parsed Records</h3>
+          </div>
+
+          <div className="table-wrap" style={{ maxHeight: 240, overflowY: "auto", marginBottom: 16 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Order ID / Inv</th><th>Date</th><th>Vendor</th><th>Asset Name</th>
+                  <th className="num">Qty</th><th className="num">Unit Price</th><th className="num">Line Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parsed.invoices.slice(0, 15).flatMap((inv) =>
+                  inv.lines.map((l, lIdx) => (
+                    <tr key={`${inv.invoice_no}-${lIdx}`}>
+                      <td style={{ fontWeight: 600 }}>{inv.invoice_no}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{dateStr(inv.invoice_date)}</td>
+                      <td style={{ color: "var(--muted)" }}>{inv.vendor_name}</td>
+                      <td>{l.asset_name}</td>
+                      <td className="num mono">{l.quantity}</td>
+                      <td className="num mono">{money(l.unit_cost)}</td>
+                      <td className="num mono" style={{ fontWeight: 600 }}>{money(l.quantity * l.unit_cost)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {parsed.invoices.length > 15 && <div style={{ fontSize: 12, color: "var(--hs-silver)", textAlign: "center", marginBottom: 16 }}>Showing first 15 invoices preview...</div>}
+        </>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 12, borderTop: "1px solid var(--hs-charcoal)" }}>
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={executeImport} disabled={busy || !parsed || !parsed.invoices.length}>
+          {busy ? "Importing Data..." : `Confirm & Import ${parsed?.totalLines || 0} Assets`}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
