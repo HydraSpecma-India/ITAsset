@@ -10,10 +10,11 @@ import { money, moneyShort, currentYear, dateStr, daysUntil, expiryState } from 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function isIncludedInBudget(a) {
+  if (!a) return true;
   if (a.remarks && a.remarks.includes("[INCLUDED_IN_IT_BUDGET]")) return true;
   if (a.remarks && a.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
   if (a.include_in_budget === false) return false;
-  const catName = (a.it_categories?.name || "").toLowerCase();
+  const catName = (a.it_categories?.name || a.category_name || "").toLowerCase();
   if (catName.includes("mobile") || catName.includes("tablet")) return false;
   return true;
 }
@@ -39,7 +40,7 @@ export default function DashboardPage() {
     (async () => {
       const [s, a, e] = await Promise.all([
         supabase.from("v_it_budget_summary").select("*").eq("budget_year", year),
-        supabase.from("it_assets").select("purchase_date,line_total,scope,category_id,status,remarks,it_categories(id,name,sort_order)").eq("budget_year", year),
+        supabase.from("it_assets").select("*, it_categories(id,name,sort_order), it_invoices(invoice_no, it_vendors(name))").eq("budget_year", year),
         supabase.from("v_it_expiry_alerts").select("*"),
       ]);
       setSummary(s.data || []);
@@ -160,16 +161,17 @@ export default function DashboardPage() {
   };
 
   const exportDrilldownCsv = (title, items) => {
-    csvDownload(`${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}.csv`, items.map((r) => ({
-      "Asset Name": r.asset_name,
-      "Purchase Date": r.purchase_date,
+    const safeTitle = (title || "drilldown").toLowerCase().replace(/[^a-z0-9]/g, "-");
+    csvDownload(`${safeTitle}.csv`, (items || []).map((r) => ({
+      "Asset Name": r.asset_name || "—",
+      "Purchase Date": r.purchase_date || r.expiry_date || "",
       "Invoice Number": r.it_invoices?.invoice_no || "",
       "Vendor Name": r.it_invoices?.it_vendors?.name || "",
       "Category": r.it_categories?.name || r.category_name || "",
       "Scope": r.scope === "global" ? "Global" : "Local",
       "Included in IT Budget?": isIncludedInBudget(r) ? "Yes (IT Budget)" : "No (Admin/Dept)",
       "Quantity": r.quantity || 1,
-      "Unit Cost": r.unit_cost || r.line_total,
+      "Unit Cost": r.unit_cost || r.line_total || 0,
       "Line Total": r.line_total || 0,
       "Assigned Staff": r.staff_name || "",
       "Status": r.status || "in_use",
