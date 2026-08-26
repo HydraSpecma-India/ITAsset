@@ -18,7 +18,7 @@ const NAV = [
     { href: "/employees", label: "Employees & Depts", ico: "👥", hideForEmployee: true },
   ]},
   { group: "Setup", items: [
-    { href: "/masters", label: "Categories & Vendors", ico: "⚙", adminOnly: true },
+    { href: "/masters", label: "Categories & Vendors", ico: "⚙", hideForEmployee: true },
     { href: "/users", label: "Users", ico: "◉", adminOnly: true },
   ]},
 ];
@@ -63,6 +63,7 @@ export default function Shell({ title, subtitle, actions, children }) {
   }
 
   const isAdmin = profile.role === "admin";
+  const isGlobalReader = profile.role === "global_reader" || profile.role === "viewer";
   const isEmployee = profile.role === "employee";
   const initials = (profile.full_name || profile.email || "?")
     .split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
@@ -123,7 +124,9 @@ export default function Shell({ title, subtitle, actions, children }) {
             <button className="btn ghost sm" onClick={toggleTheme} title="Toggle Dark/Light Mode" style={{ borderRadius: 20, padding: "4px 12px" }}>
               {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
             </button>
-            <span className={`pill ${isAdmin ? "gold" : "blue"}`}>{isAdmin ? "Admin" : "Viewer"}</span>
+            <span className={`pill ${isAdmin ? "gold" : isGlobalReader ? "amber" : "blue"}`}>
+              {isAdmin ? "Admin" : isGlobalReader ? "Global Reader" : "Employee"}
+            </span>
             <div className="avatar" title={profile.email}>{initials}</div>
           </div>
         </header>

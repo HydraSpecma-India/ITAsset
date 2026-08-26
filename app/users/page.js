@@ -80,9 +80,11 @@ export default function UsersPage() {
                     <td style={{ color: "var(--muted)" }}>{u.email}</td>
                     <td>
                       <select value={u.role} disabled={u.id === profile?.id}
-                        onChange={(e) => update(u, { role: e.target.value })} style={{ width: 110, padding: "5px 8px" }}>
-                        <option value="admin">Admin</option>
-                        <option value="viewer">Viewer</option>
+                        onChange={(e) => update(u, { role: e.target.value })} style={{ width: 160, padding: "5px 8px" }}>
+                        <option value="admin">Admin (Full Access)</option>
+                        <option value="global_reader">Global Reader (View All)</option>
+                        <option value="viewer">Viewer (Read-Only)</option>
+                        <option value="employee">Employee (Restricted)</option>
                       </select>
                     </td>
                     <td>
@@ -117,8 +119,10 @@ export default function UsersPage() {
             <Field label="Email *"><input type="email" value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} /></Field>
             <Field label="Role">
               <select value={creating.role} onChange={(e) => setCreating({ ...creating, role: e.target.value })}>
-                <option value="viewer">Viewer — read-only dashboards</option>
-                <option value="admin">Admin — full access</option>
+                <option value="global_reader">Global Reader — Read-only access to all data</option>
+                <option value="viewer">Viewer — Read-only dashboards</option>
+                <option value="admin">Admin — Full access & modifications</option>
+                <option value="employee">Employee — Restricted to assigned assets</option>
               </select>
             </Field>
             <Field label="Temporary password *">

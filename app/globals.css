@@ -269,64 +269,176 @@ tfoot td { padding: 10px 11px; border-top: 1px solid var(--gold); font-weight: 7
 .loading { padding: 60px; text-align: center; color: var(--hs-silver); }
 
 /* ------------------------------------------------------------ Light Theme Overrides */
+[data-theme="light"] {
+  --navy-900: #F4F6F9;
+  --navy-850: #FFFFFF;
+  --navy-800: #F8FAFC;
+  --navy-700: #F1F5F9;
+  --navy-600: #E2E8F0;
+  --line: rgba(217, 119, 6, 0.3);
+  --line-soft: #CBD5E1;
+  --text: #0F172A;
+  --muted: #334155;
+  --faint: #64748B;
+  --hs-silver: #475569;
+  --hs-charcoal: #CBD5E1;
+  --gold: #D97706;
+  --gold-soft: #B45309;
+  --gold-dim: rgba(217, 119, 6, 0.12);
+}
+
 [data-theme="light"] body {
   background: #F4F6F9;
-  color: #1A1D23;
+  color: #0F172A;
+  font-weight: 450;
 }
-[data-theme="light"] .sidebar {
-  background: #1B2129;
-  border-right-color: #2D3542;
-}
+
 [data-theme="light"] .topbar {
   background: #FFFFFF;
-  border-bottom-color: #E2E8F0;
+  border-bottom-color: #CBD5E1;
   color: #0F172A;
 }
+
+[data-theme="light"] .topbar h1 {
+  color: #0F172A;
+  font-weight: 700;
+}
+
+[data-theme="light"] .topbar .sub {
+  color: #475569;
+  font-weight: 500;
+}
+
 [data-theme="light"] h1, [data-theme="light"] h2, [data-theme="light"] h3, [data-theme="light"] h4 {
   color: #0F172A;
+  font-weight: 700;
 }
+
 [data-theme="light"] .card {
   background: #FFFFFF;
-  border-color: #E2E8F0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  border: 1px solid #CBD5E1;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
 }
+
 [data-theme="light"] .card-head {
   background: #F8FAFC;
   border-bottom-color: #E2E8F0;
 }
+
+[data-theme="light"] .card-head h3 {
+  color: #0F172A;
+  font-weight: 700;
+}
+
+[data-theme="light"] .card-head .hint {
+  color: #475569;
+  font-weight: 500;
+}
+
+[data-theme="light"] .field-label {
+  color: #1E293B;
+  font-weight: 600;
+}
+
 [data-theme="light"] input, [data-theme="light"] select, [data-theme="light"] textarea {
   background: #FFFFFF;
-  border-color: #CBD5E1;
+  border: 1px solid #94A3B8;
   color: #0F172A;
+  font-weight: 500;
 }
+
+[data-theme="light"] input::placeholder {
+  color: #64748B;
+}
+
 [data-theme="light"] thead th {
-  background: #F1F5F9;
-  color: #475569;
-  border-bottom-color: #CBD5E1;
+  background: #E2E8F0;
+  color: #0F172A;
+  font-weight: 700;
+  border-bottom: 2px solid #CBD5E1;
 }
+
 [data-theme="light"] tbody td {
-  border-bottom-color: #F1F5F9;
-  color: #1E293B;
+  border-bottom-color: #E2E8F0;
+  color: #0F172A;
+  font-weight: 500;
 }
+
 [data-theme="light"] tbody tr:hover {
-  background: rgba(255, 204, 0, 0.12);
+  background: rgba(217, 119, 6, 0.08);
 }
+
 [data-theme="light"] .modal {
   background: #FFFFFF;
   border-color: #CBD5E1;
   color: #0F172A;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
 }
+
 [data-theme="light"] .modal .card-head {
   background: #F8FAFC;
   border-bottom-color: #E2E8F0;
 }
-[data-theme="light"] .kpi-label {
-  color: #64748B;
+
+[data-theme="light"] .kpi-card {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
 }
+
+[data-theme="light"] .kpi-label {
+  color: #475569;
+  font-weight: 600;
+}
+
+[data-theme="light"] .kpi-value {
+  color: #0F172A;
+  font-weight: 700;
+}
+
+[data-theme="light"] .btn.ghost {
+  color: #1E293B;
+  border-color: #94A3B8;
+  font-weight: 600;
+}
+
+[data-theme="light"] .btn.ghost:hover {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+
 [data-theme="light"] .pill.grey {
   background: #E2E8F0;
-  color: #334155;
+  color: #1E293B;
   border-color: #CBD5E1;
+  font-weight: 600;
+}
+
+[data-theme="light"] .pill.amber {
+  background: rgba(217, 119, 6, 0.15);
+  color: #92400E;
+  border-color: #F59E0B;
+  font-weight: 600;
+}
+
+[data-theme="light"] .pill.green {
+  background: rgba(16, 185, 129, 0.15);
+  color: #065F46;
+  border-color: #10B981;
+  font-weight: 600;
+}
+
+[data-theme="light"] .pill.blue {
+  background: rgba(59, 130, 246, 0.15);
+  color: #1E40AF;
+  border-color: #3B82F6;
+  font-weight: 600;
+}
+
+[data-theme="light"] .pill.red {
+  background: rgba(239, 68, 68, 0.15);
+  color: #991B1B;
+  border-color: #EF4444;
+  font-weight: 600;
 }
 
 /* ------------------------------------------------------------ RESPONSIVE LAYOUT RULES */
