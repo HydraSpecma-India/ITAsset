@@ -1083,6 +1083,11 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
     const orderIdColIdx = headers.indexOf("order id") !== -1 ? headers.indexOf("order id") : findCol(["order id", "order_id"]);
     const defaultCatId = categories[0]?.id || "";
 
+    const parseNumStr = (str) => {
+      if (!str) return 0;
+      return Math.abs(parseFloat(String(str).replace(/,/g, "").replace(/[^0-9.-]/g, "")) || 0);
+    };
+
     const refundedOrderIds = new Set();
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
@@ -1090,8 +1095,8 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
       const rawOrderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
       const txStr = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
       const docStr = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
-      const valNum = parseFloat(r[totalIdx]) || 0;
-      const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || valNum < 0;
+      const valNum = parseNumStr(r[totalIdx]);
+      const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || (r[totalIdx] && String(r[totalIdx]).includes("-"));
       if (isRef && rawOrderId) refundedOrderIds.add(rawOrderId);
     }
 
@@ -1104,8 +1109,8 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
       const rawOrderId = orderIdColIdx !== -1 ? r[orderIdColIdx] : "";
       const txStr = txTypeIdx !== -1 ? (r[txTypeIdx] || "") : "";
       const docStr = docStatusIdx !== -1 ? (r[docStatusIdx] || "") : "";
-      const valNum = parseFloat(r[totalIdx]) || 0;
-      const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || valNum < 0;
+      const valNum = parseNumStr(r[totalIdx]);
+      const isRef = txStr.toLowerCase().includes("refund") || docStr.toLowerCase().includes("refund") || (r[totalIdx] && String(r[totalIdx]).includes("-"));
 
       if ((rawOrderId && refundedOrderIds.has(rawOrderId)) || isRef) {
         continue;
@@ -1131,9 +1136,10 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
       const poNumber = r[poIdx] || "";
       const sellerName = (vendorIdx !== -1 && r[vendorIdx] ? r[vendorIdx] : "Amazon Business").trim();
       const title = (r[titleIdx] || "IT Purchase Item").trim();
-      const qty = Math.abs(parseInt(r[qtyIdx])) || 1;
-      const unitCost = Math.abs(parseFloat(r[ppuIdx]) || (valNum ? valNum / qty : 0));
-      const taxAmt = Math.abs(parseFloat(r[taxIdx]) || 0);
+      const qty = Math.max(1, Math.abs(parseInt(r[qtyIdx])) || 1);
+      const parsedPpu = parseNumStr(r[ppuIdx]);
+      const unitCost = parsedPpu || (valNum ? valNum / qty : 0);
+      const taxAmt = parseNumStr(r[taxIdx]);
       const staff = r[userIdx] || "";
 
       const t = title.toLowerCase();
