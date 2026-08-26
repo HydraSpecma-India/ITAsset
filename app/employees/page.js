@@ -364,14 +364,20 @@ export default function EmployeesPage() {
                           <td className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{e.email || "—"}</td>
                           <td className="mono" style={{ fontSize: 12, color: "var(--gold)", fontWeight: 600 }}>{defaultPass}</td>
                           <td>
-                            <button
-                              className={`pill ${e.is_active !== false ? "green" : "red"}`}
-                              onClick={() => toggleEmpStatus(e)}
-                              style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
-                              title="Click to toggle Active / Inactive status"
-                            >
-                              {e.is_active !== false ? "Active ⇄" : "Inactive ⇄"}
-                            </button>
+                            {isAdmin ? (
+                              <button
+                                className={`pill ${e.is_active !== false ? "green" : "red"}`}
+                                onClick={() => toggleEmpStatus(e)}
+                                style={{ cursor: "pointer", border: "1px solid var(--hs-charcoal)" }}
+                                title="Click to toggle Active / Inactive status"
+                              >
+                                {e.is_active !== false ? "Active ⇄" : "Inactive ⇄"}
+                              </button>
+                            ) : (
+                              <span className={`pill ${e.is_active !== false ? "green" : "red"}`}>
+                                {e.is_active !== false ? "Active" : "Inactive"}
+                              </span>
+                            )}
                           </td>
                           {isAdmin && (
                             <td>

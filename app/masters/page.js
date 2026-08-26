@@ -6,6 +6,9 @@ import { Card, Field, Modal, Empty } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 
 export default function MastersPage() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === "admin";
+
   const [tab, setTab] = useState("categories");
   const [categories, setCategories] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -43,6 +46,7 @@ export default function MastersPage() {
   }
 
   async function toggle(table, row) {
+    if (!isAdmin) return;
     await supabase.from(table).update({ is_active: !row.is_active }).eq("id", row.id);
     load();
   }
@@ -52,11 +56,13 @@ export default function MastersPage() {
       title="Categories & Vendors"
       subtitle="Master data used by budgets, invoices and the asset register"
       actions={
-        <button className="btn sm" onClick={() => setEdit(tab === "categories"
-          ? { kind: "category", name: "", description: "", sort_order: 100, is_active: true }
-          : { kind: "vendor", name: "", gst_no: "", contact_person: "", phone: "", email: "", is_active: true })}>
-          + New {tab === "categories" ? "category" : "vendor"}
-        </button>
+        isAdmin && (
+          <button className="btn sm" onClick={() => setEdit(tab === "categories"
+            ? { kind: "category", name: "", description: "", sort_order: 100, is_active: true }
+            : { kind: "vendor", name: "", gst_no: "", contact_person: "", phone: "", email: "", is_active: true })}>
+            + New {tab === "categories" ? "category" : "vendor"}
+          </button>
+        )
       }
     >
       <div className="btn-row" style={{ marginBottom: 14 }}>
@@ -72,7 +78,12 @@ export default function MastersPage() {
         <Card title="Budget categories" hint="Each category can hold a local and a global budget line per year">
           <div className="table-wrap">
             <table>
-              <thead><tr><th className="num" style={{ width: 70 }}>Order</th><th>Name</th><th>Description</th><th>Status</th><th /></tr></thead>
+              <thead>
+                <tr>
+                  <th className="num" style={{ width: 70 }}>Order</th><th>Name</th><th>Description</th><th>Status</th>
+                  {isAdmin && <th />}
+                </tr>
+              </thead>
               <tbody>
                 {categories.map((c) => (
                   <tr key={c.id}>
@@ -80,12 +91,14 @@ export default function MastersPage() {
                     <td style={{ fontWeight: 600 }}>{c.name}</td>
                     <td style={{ color: "var(--muted)" }}>{c.description || "—"}</td>
                     <td><span className={`pill ${c.is_active ? "green" : "grey"}`}>{c.is_active ? "Active" : "Inactive"}</span></td>
-                    <td>
-                      <div className="btn-row">
-                        <button className="btn ghost sm" onClick={() => setEdit({ kind: "category", ...c })}>Edit</button>
-                        <button className="btn ghost sm" onClick={() => toggle("it_categories", c)}>{c.is_active ? "Disable" : "Enable"}</button>
-                      </div>
-                    </td>
+                    {isAdmin && (
+                      <td>
+                        <div className="btn-row">
+                          <button className="btn ghost sm" onClick={() => setEdit({ kind: "category", ...c })}>Edit</button>
+                          <button className="btn ghost sm" onClick={() => toggle("it_categories", c)}>{c.is_active ? "Disable" : "Enable"}</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -97,7 +110,12 @@ export default function MastersPage() {
           {vendors.length === 0 ? <Empty>No vendors yet.</Empty> : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Name</th><th>GST no</th><th>Contact</th><th>Phone</th><th>Email</th><th>Status</th><th /></tr></thead>
+                <thead>
+                  <tr>
+                    <th>Name</th><th>GST no</th><th>Contact</th><th>Phone</th><th>Email</th><th>Status</th>
+                    {isAdmin && <th />}
+                  </tr>
+                </thead>
                 <tbody>
                   {vendors.map((v) => (
                     <tr key={v.id}>
@@ -107,12 +125,14 @@ export default function MastersPage() {
                       <td className="mono" style={{ color: "var(--muted)" }}>{v.phone || "—"}</td>
                       <td style={{ color: "var(--muted)" }}>{v.email || "—"}</td>
                       <td><span className={`pill ${v.is_active ? "green" : "grey"}`}>{v.is_active ? "Active" : "Inactive"}</span></td>
-                      <td>
-                        <div className="btn-row">
-                          <button className="btn ghost sm" onClick={() => setEdit({ kind: "vendor", ...v })}>Edit</button>
-                          <button className="btn ghost sm" onClick={() => toggle("it_vendors", v)}>{v.is_active ? "Disable" : "Enable"}</button>
-                        </div>
-                      </td>
+                      {isAdmin && (
+                        <td>
+                          <div className="btn-row">
+                            <button className="btn ghost sm" onClick={() => setEdit({ kind: "vendor", ...v })}>Edit</button>
+                            <button className="btn ghost sm" onClick={() => toggle("it_vendors", v)}>{v.is_active ? "Disable" : "Enable"}</button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
