@@ -51,6 +51,8 @@ export default function InvoicesPage() {
   const [editing, setEditing] = useState(null);
   const [detail, setDetail] = useState(null);
 
+  const [selectedInvIds, setSelectedInvIds] = useState(new Set());
+
   const load = useCallback(async () => {
     setLoading(true);
     const [i, c, v, emp, dept] = await Promise.all([
@@ -65,6 +67,7 @@ export default function InvoicesPage() {
     setVendors(v.data || []);
     setEmployees(emp.data || []);
     setDepartments(dept.data || []);
+    setSelectedInvIds(new Set());
     setLoading(false);
   }, []);
 
@@ -83,6 +86,42 @@ export default function InvoicesPage() {
   }, [invoices, q, yearFilter, month, vendorFilter]);
 
   const total = useMemo(() => sanitizedInvoices.reduce((a, i) => a + Number(i.invoice_total || 0), 0), [sanitizedInvoices]);
+
+  function toggleSelectInv(id) {
+    setSelectedInvIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedInvIds.size === sanitizedInvoices.length && sanitizedInvoices.length > 0) {
+      setSelectedInvIds(new Set());
+    } else {
+      setSelectedInvIds(new Set(sanitizedInvoices.map((i) => i.id)));
+    }
+  }
+
+  async function deleteSelectedInvoices() {
+    const count = selectedInvIds.size;
+    if (!count) return;
+    if (!confirm(`⚠️ DANGER: Are you sure you want to delete ${count} selected invoice(s)?\n\nAll associated asset line items created from these invoices will also be permanently deleted.`)) return;
+
+    const ids = Array.from(selectedInvIds);
+    setLoading(true);
+
+    const { error: assetErr } = await supabase.from("it_assets").delete().in("invoice_id", ids);
+    const { error: invErr } = await supabase.from("it_invoices").delete().in("id", ids);
+
+    if (assetErr || invErr) {
+      alert("Failed to delete selected invoices: " + (assetErr?.message || invErr?.message));
+    } else {
+      setSelectedInvIds(new Set());
+      load();
+    }
+  }
 
   async function showDetail(inv) {
     const { data } = await supabase.from("it_assets").select("*, it_categories(name)").eq("invoice_id", inv.id);
@@ -127,10 +166,16 @@ export default function InvoicesPage() {
   }
 
   function exportCsv() {
-    csvDownload("invoices.csv", sanitizedInvoices.map((i) => ({
-      invoice_no: i.invoice_no, invoice_date: i.invoice_date, vendor: i.vendor_name || "",
-      po_number: i.po_number || "", lines: i.line_count, lines_total: i.lines_total,
-      tax: i.tax_amount, other: i.other_charges, total: i.invoice_total,
+    csvDownload("invoices_export.csv", sanitizedInvoices.map((i) => ({
+      "Invoice No": i.invoice_no,
+      "Invoice Date": dateStr(i.invoice_date),
+      "Vendor Name": i.vendor_name || "",
+      "PO Number": i.po_number || "",
+      "Asset Line Count": i.line_count || 0,
+      "Line Total (INR)": i.lines_total || 0,
+      "Tax & Other Charges (INR)": i.tax_and_other || 0,
+      "Invoice Total (INR)": i.invoice_total || 0,
+      "Notes": i.notes || "",
     })));
   }
 
@@ -161,22 +206,23 @@ export default function InvoicesPage() {
 
   async function saveDetailInlineEdit(l) {
     setInlineSavingLineId(l.id);
-    const updates = {
+    const { error } = await supabase.from("it_assets").update({
       category_id: inlineEditForm.category_id || null,
       scope: inlineEditForm.scope || "local",
       staff_name: inlineEditForm.staff_name || null,
       department: inlineEditForm.department || null,
       warranty_end: inlineEditForm.warranty_end || null,
       remarks: inlineEditForm.remarks || null,
-    };
+    }).eq("id", l.id);
 
-    const { error } = await supabase.from("it_assets").update(updates).eq("id", l.id);
     setInlineSavingLineId(null);
     if (error) {
-      alert("Error updating line: " + error.message);
+      alert("Failed to save changes: " + error.message);
     } else {
       setInlineEditingLineId(null);
-      if (detail?.inv) showDetail(detail.inv);
+      if (detail?.inv) {
+        showDetail(detail.inv);
+      }
       load();
     }
   }
@@ -187,7 +233,14 @@ export default function InvoicesPage() {
       subtitle="Every IT purchase invoice with its asset lines"
       actions={
         <>
-          <button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>
+          {selectedInvIds.size > 0 && isAdmin && (
+            <button className="btn danger sm" onClick={deleteSelectedInvoices}>
+              🗑️ Delete Selected ({selectedInvIds.size})
+            </button>
+          )}
+          <button className="btn ghost sm" onClick={exportCsv} style={{ borderColor: "var(--gold)", color: "var(--gold)" }}>
+            📥 Export CSV
+          </button>
           {isAdmin && (
             <>
               {invoices.length > 0 && (
@@ -250,31 +303,53 @@ export default function InvoicesPage() {
             <table>
               <thead>
                 <tr>
+                  {isAdmin && (
+                    <th style={{ width: 40, textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={sanitizedInvoices.length > 0 && selectedInvIds.size === sanitizedInvoices.length}
+                        onChange={toggleSelectAll}
+                        title="Select all invoices"
+                      />
+                    </th>
+                  )}
                   <th>Invoice</th><th>Date</th><th>Vendor</th><th>PO</th>
                   <th className="num">Lines</th><th className="num">Line value</th>
                   <th className="num">Tax + other</th><th className="num">Total</th><th />
                 </tr>
               </thead>
               <tbody>
-                {sanitizedInvoices.map((i) => (
-                  <tr key={i.id}>
-                    <td style={{ fontWeight: 600 }}>{i.invoice_no}</td>
-                    <td className="mono">{dateStr(i.invoice_date)}</td>
-                    <td style={{ color: "var(--muted)" }}>{i.vendor_name || "—"}</td>
-                    <td style={{ color: "var(--muted)" }}>{i.po_number || "—"}</td>
-                    <td className="num mono">{i.line_count}</td>
-                    <td className="num mono">{money(i.lines_total, i.currency)}</td>
-                    <td className="num mono">{money(i.tax_and_other, i.currency)}</td>
-                    <td className="num mono" style={{ fontWeight: 600 }}>{money(i.invoice_total, i.currency)}</td>
-                    <td>
-                      <div className="btn-row">
-                        <button className="btn ghost sm" onClick={() => showDetail(i)}>View & Edit Lines</button>
-                        {isAdmin && <button className="btn ghost sm" onClick={() => openEdit(i)}>Edit Invoice</button>}
-                        {isAdmin && <button className="btn danger sm" onClick={() => remove(i)}>Del</button>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {sanitizedInvoices.map((i) => {
+                  const isSelected = selectedInvIds.has(i.id);
+                  return (
+                    <tr key={i.id} style={{ background: isSelected ? "rgba(255,204,0,0.08)" : "transparent" }}>
+                      {isAdmin && (
+                        <td style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectInv(i.id)}
+                          />
+                        </td>
+                      )}
+                      <td style={{ fontWeight: 600 }}>{i.invoice_no}</td>
+                      <td className="mono">{dateStr(i.invoice_date)}</td>
+                      <td style={{ color: "var(--muted)" }}>{i.vendor_name || "—"}</td>
+                      <td style={{ color: "var(--muted)" }}>{i.po_number || "—"}</td>
+                      <td className="num mono">{i.line_count}</td>
+                      <td className="num mono">{money(i.lines_total, i.currency)}</td>
+                      <td className="num mono">{money(i.tax_and_other, i.currency)}</td>
+                      <td className="num mono" style={{ fontWeight: 600 }}>{money(i.invoice_total, i.currency)}</td>
+                      <td>
+                        <div className="btn-row">
+                          <button className="btn ghost sm" onClick={() => showDetail(i)}>View & Edit Lines</button>
+                          {isAdmin && <button className="btn ghost sm" onClick={() => openEdit(i)}>Edit Invoice</button>}
+                          {isAdmin && <button className="btn danger sm" onClick={() => remove(i)}>Del</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
