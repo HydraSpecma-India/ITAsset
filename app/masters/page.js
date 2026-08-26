@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Shell from "@/components/Shell";
 import { Card, Field, Modal, Empty } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/session";
 
 export default function MastersPage() {
   const { profile } = useAuth();
