@@ -40,16 +40,51 @@ export default function BudgetsPage() {
       supabase.from("it_assets").select("line_total,scope,category_id,remarks,it_categories(name)").eq("budget_year", year),
       supabase.from("it_budget_versions").select("*").eq("budget_year", year).order("version_number", { ascending: false }),
     ]);
-    setCategories(c.data || []);
-    setRows(s.data || []);
-    setAssets(a.data || []);
-    setVersions(v.data || []);
-    if (v.data && v.data.length > 0) {
-      setSelectedVer(v.data[0]);
+
+    const cats = c.data || [];
+    const budgetRows = s.data || [];
+    const assetRows = a.data || [];
+    let verRows = v.data || [];
+
+    if (verRows.length === 0 && (budgetRows.length > 0 || cats.length > 0)) {
+      const initSnap = [];
+      cats.forEach((catItem) => {
+        ["local", "global"].forEach((scp) => {
+          const r = budgetRows.find((b) => b.category_id === catItem.id && b.scope === scp);
+          initSnap.push({
+            category_id: catItem.id,
+            name: catItem.name,
+            scope: scp,
+            amount: Number(r?.amount || 0),
+            notes: r?.notes || "",
+          });
+        });
+      });
+
+      const { data: createdVer } = await supabase.from("it_budget_versions").insert({
+        budget_year: year,
+        version_number: 1,
+        version_name: "v1.0 (Initial Budget)",
+        change_summary: `Initial budget snapshot for ${year}`,
+        snapshot_data: initSnap,
+        created_by: "System / Admin",
+      }).select();
+
+      if (createdVer && createdVer.length > 0) {
+        verRows = createdVer;
+      }
+    }
+
+    setCategories(cats);
+    setRows(budgetRows);
+    setAssets(assetRows);
+    setVersions(verRows);
+    if (verRows.length > 0) {
+      setSelectedVer(verRows[0]);
     }
     const d = {};
     const dn = {};
-    (s.data || []).forEach((r) => {
+    budgetRows.forEach((r) => {
       d[`${r.category_id}|${r.scope}`] = String(r.amount);
       dn[`${r.category_id}|${r.scope}`] = r.notes || "";
     });
@@ -105,12 +140,22 @@ export default function BudgetsPage() {
     const snapshotItems = [];
     const changesList = [];
 
+    const { data: latestVerRes } = await supabase
+      .from("it_budget_versions")
+      .select("version_number")
+      .eq("budget_year", year)
+      .order("version_number", { ascending: false })
+      .limit(1);
+
+    const lastVerNo = latestVerRes && latestVerRes.length > 0 ? Number(latestVerRes[0].version_number) : 0;
+    const nextVerNo = lastVerNo + 1;
+
     categories.forEach((c) => {
       ["local", "global"].forEach((scope) => {
         const key = `${c.id}|${scope}`;
         const raw = draft[key];
         const notesVal = draftNotes[key] || null;
-        const amount = Number(raw || 0);
+        const amount = isNaN(Number(raw)) ? 0 : Number(raw || 0);
 
         const oldRow = rows.find((r) => r.category_id === c.id && r.scope === scope);
         const oldAmt = Number(oldRow?.amount || 0);
@@ -122,35 +167,35 @@ export default function BudgetsPage() {
           changesList.push(`${c.name} (${scope}): ${money(oldAmt)} → ${money(amount)} (${diffStr})`);
         }
 
-        if (!raw && !notesVal && (!oldRow || Number(oldRow.amount) === 0)) return;
-
-        payload.push({ budget_year: year, category_id: c.id, scope, amount: isNaN(amount) ? 0 : amount, notes: notesVal });
-        snapshotItems.push({ category_id: c.id, name: c.name, scope, amount: isNaN(amount) ? 0 : amount, notes: notesVal });
+        payload.push({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal });
+        snapshotItems.push({ category_id: c.id, name: c.name, scope, amount, notes: notesVal });
       });
     });
 
     const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
 
     if (!error) {
-      const nextVerNo = (versions[0]?.version_number || 0) + 1;
       const summaryText = changesList.length
         ? `Modified ${changesList.length} line(s):\n• ` + changesList.join("\n• ")
         : `Version v${nextVerNo}.0 - Saved budget for ${year}`;
 
-      await supabase.from("it_budget_versions").insert({
+      const { data: verInserted } = await supabase.from("it_budget_versions").insert({
         budget_year: year,
         version_number: nextVerNo,
         version_name: `v${nextVerNo}.0`,
         change_summary: summaryText,
         snapshot_data: snapshotItems,
         created_by: profile?.full_name || profile?.email || "Admin",
-      });
+      }).select();
 
-      load();
+      await load();
+      if (verInserted && verInserted[0]) {
+        setSelectedVer(verInserted[0]);
+      }
     }
 
     setSaving(false);
-    setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Budget & Version v${(versions[0]?.version_number || 0) + 1}.0 for ${year} saved.` });
+    setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Budget & Version v${nextVerNo}.0 for ${year} saved.` });
   }
 
   async function restoreVersion(ver) {
