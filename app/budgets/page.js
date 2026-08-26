@@ -136,50 +136,60 @@ export default function BudgetsPage() {
   async function save() {
     setSaving(true);
     setMsg(null);
-    const payload = [];
-    const snapshotItems = [];
-    const changesList = [];
 
-    const { data: latestVerRes } = await supabase
-      .from("it_budget_versions")
-      .select("version_number")
-      .eq("budget_year", year)
-      .order("version_number", { ascending: false })
-      .limit(1);
+    try {
+      const { data: latestVerRes } = await supabase
+        .from("it_budget_versions")
+        .select("version_number")
+        .eq("budget_year", year)
+        .order("version_number", { ascending: false })
+        .limit(1);
 
-    const lastVerNo = latestVerRes && latestVerRes.length > 0 ? Number(latestVerRes[0].version_number) : 0;
-    const nextVerNo = lastVerNo + 1;
+      const lastVerNo = latestVerRes && latestVerRes.length > 0 ? Number(latestVerRes[0].version_number) : 0;
+      const nextVerNo = lastVerNo + 1;
 
-    categories.forEach((c) => {
-      ["local", "global"].forEach((scope) => {
-        const key = `${c.id}|${scope}`;
-        const raw = draft[key];
-        const notesVal = draftNotes[key] || null;
-        const amount = isNaN(Number(raw)) ? 0 : Number(raw || 0);
+      const snapshotItems = [];
+      const changesList = [];
 
-        const oldRow = rows.find((r) => r.category_id === c.id && r.scope === scope);
-        const oldAmt = Number(oldRow?.amount || 0);
-        const oldNote = oldRow?.notes || "";
+      for (const c of categories) {
+        for (const scope of ["local", "global"]) {
+          const key = `${c.id}|${scope}`;
+          const raw = draft[key];
+          const notesVal = draftNotes[key] || null;
+          const amount = isNaN(Number(raw)) ? 0 : Number(raw || 0);
 
-        if (amount !== oldAmt || (notesVal || "") !== oldNote) {
-          const diff = amount - oldAmt;
-          const diffStr = diff !== 0 ? (diff > 0 ? `+${money(diff)}` : money(diff)) : "Remarks updated";
-          changesList.push(`${c.name} (${scope}): ${money(oldAmt)} → ${money(amount)} (${diffStr})`);
+          const oldRow = rows.find((r) => r.category_id === c.id && r.scope === scope);
+          const oldAmt = Number(oldRow?.amount || 0);
+          const oldNote = oldRow?.notes || "";
+
+          if (amount !== oldAmt || (notesVal || "") !== oldNote) {
+            const diff = amount - oldAmt;
+            const diffStr = diff !== 0 ? (diff > 0 ? `+${money(diff)}` : money(diff)) : "Remarks updated";
+            changesList.push(`${c.name} (${scope}): ${money(oldAmt)} → ${money(amount)} (${diffStr})`);
+          }
+
+          snapshotItems.push({ category_id: c.id, name: c.name, scope, amount, notes: notesVal });
+
+          if (oldRow?.id) {
+            const { error: updErr } = await supabase
+              .from("it_budgets")
+              .update({ amount, notes: notesVal, updated_at: new Date().toISOString() })
+              .eq("id", oldRow.id);
+            if (updErr) throw updErr;
+          } else if (amount > 0 || notesVal) {
+            const { error: insErr } = await supabase
+              .from("it_budgets")
+              .insert({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal });
+            if (insErr) throw insErr;
+          }
         }
+      }
 
-        payload.push({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal });
-        snapshotItems.push({ category_id: c.id, name: c.name, scope, amount, notes: notesVal });
-      });
-    });
-
-    const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
-
-    if (!error) {
       const summaryText = changesList.length
         ? `Modified ${changesList.length} line(s):\n• ` + changesList.join("\n• ")
         : `Version v${nextVerNo}.0 - Saved budget for ${year}`;
 
-      const { data: verInserted } = await supabase.from("it_budget_versions").insert({
+      const { data: verInserted, error: verErr } = await supabase.from("it_budget_versions").insert({
         budget_year: year,
         version_number: nextVerNo,
         version_name: `v${nextVerNo}.0`,
@@ -188,35 +198,54 @@ export default function BudgetsPage() {
         created_by: profile?.full_name || profile?.email || "Admin",
       }).select();
 
+      if (verErr) {
+        console.error("Version insert error:", verErr);
+        throw verErr;
+      }
+
+      setSaving(false);
+      setMsg({ t: "ok", m: `Budget & Version v${nextVerNo}.0 for ${year} saved successfully!` });
+
       await load();
       if (verInserted && verInserted[0]) {
         setSelectedVer(verInserted[0]);
       }
+    } catch (err) {
+      console.error("Save budget error:", err);
+      setSaving(false);
+      setMsg({ t: "err", m: "Failed to save budget: " + (err.message || "Unknown error") });
     }
-
-    setSaving(false);
-    setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Budget & Version v${nextVerNo}.0 for ${year} saved.` });
   }
 
   async function restoreVersion(ver) {
     if (!confirm(`⚠️ Are you sure you want to restore Version v${ver.version_number}.0? This will override current active budget values for ${year}.`)) return;
 
     setLoading(true);
-    const snap = ver.snapshot_data || [];
-    const payload = snap.map((item) => ({
-      budget_year: year,
-      category_id: item.category_id,
-      scope: item.scope,
-      amount: item.amount || 0,
-      notes: item.notes || null,
-    }));
+    try {
+      const snap = ver.snapshot_data || [];
 
-    const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
-    if (error) {
-      alert("Error restoring version: " + error.message);
-      setLoading(false);
-    } else {
-      const nextVerNo = (versions[0]?.version_number || 0) + 1;
+      for (const item of snap) {
+        const oldRow = rows.find((r) => r.category_id === item.category_id && r.scope === item.scope);
+        const amount = Number(item.amount || 0);
+        const notesVal = item.notes || null;
+
+        if (oldRow?.id) {
+          await supabase.from("it_budgets").update({ amount, notes: notesVal, updated_at: new Date().toISOString() }).eq("id", oldRow.id);
+        } else if (amount > 0 || notesVal) {
+          await supabase.from("it_budgets").insert({ budget_year: year, category_id: item.category_id, scope: item.scope, amount, notes: notesVal });
+        }
+      }
+
+      const { data: latestVerRes } = await supabase
+        .from("it_budget_versions")
+        .select("version_number")
+        .eq("budget_year", year)
+        .order("version_number", { ascending: false })
+        .limit(1);
+
+      const lastVerNo = latestVerRes && latestVerRes.length > 0 ? Number(latestVerRes[0].version_number) : 0;
+      const nextVerNo = lastVerNo + 1;
+
       await supabase.from("it_budget_versions").insert({
         budget_year: year,
         version_number: nextVerNo,
@@ -228,7 +257,10 @@ export default function BudgetsPage() {
 
       alert(`Successfully restored active budget to Version v${ver.version_number}.0!`);
       setHistoryOpen(false);
-      load();
+      await load();
+    } catch (err) {
+      alert("Error restoring version: " + err.message);
+      setLoading(false);
     }
   }
 
