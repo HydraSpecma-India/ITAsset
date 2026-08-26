@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Shell from "@/components/Shell";
-import { Card, Progress, Empty } from "@/components/ui";
+import { Card, Progress, Empty, Modal } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
 import { money, currentYear, csvDownload } from "@/lib/format";
@@ -25,20 +25,28 @@ export default function BudgetsPage() {
   const [assets, setAssets] = useState([]);
   const [draft, setDraft] = useState({});
   const [draftNotes, setDraftNotes] = useState({});
+  const [versions, setVersions] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedVer, setSelectedVer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [c, s, a] = await Promise.all([
+    const [c, s, a, v] = await Promise.all([
       supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order"),
       supabase.from("it_budgets").select("*").eq("budget_year", year),
       supabase.from("it_assets").select("line_total,scope,category_id,remarks,it_categories(name)").eq("budget_year", year),
+      supabase.from("it_budget_versions").select("*").eq("budget_year", year).order("version_number", { ascending: false }),
     ]);
     setCategories(c.data || []);
     setRows(s.data || []);
     setAssets(a.data || []);
+    setVersions(v.data || []);
+    if (v.data && v.data.length > 0) {
+      setSelectedVer(v.data[0]);
+    }
     const d = {};
     const dn = {};
     (s.data || []).forEach((r) => {
@@ -94,20 +102,89 @@ export default function BudgetsPage() {
     setSaving(true);
     setMsg(null);
     const payload = [];
+    const snapshotItems = [];
+    const changesList = [];
+
     categories.forEach((c) => {
       ["local", "global"].forEach((scope) => {
         const key = `${c.id}|${scope}`;
         const raw = draft[key];
         const notesVal = draftNotes[key] || null;
         const amount = Number(raw || 0);
-        if (!raw && !notesVal && !rows.find((r) => `${r.category_id}|${r.scope}` === key && Number(r.amount) > 0)) return;
+
+        const oldRow = rows.find((r) => r.category_id === c.id && r.scope === scope);
+        const oldAmt = Number(oldRow?.amount || 0);
+        const oldNote = oldRow?.notes || "";
+
+        if (amount !== oldAmt || (notesVal || "") !== oldNote) {
+          const diff = amount - oldAmt;
+          const diffStr = diff !== 0 ? (diff > 0 ? `+${money(diff)}` : money(diff)) : "Remarks updated";
+          changesList.push(`${c.name} (${scope}): ${money(oldAmt)} → ${money(amount)} (${diffStr})`);
+        }
+
+        if (!raw && !notesVal && (!oldRow || Number(oldRow.amount) === 0)) return;
+
         payload.push({ budget_year: year, category_id: c.id, scope, amount: isNaN(amount) ? 0 : amount, notes: notesVal });
+        snapshotItems.push({ category_id: c.id, name: c.name, scope, amount: isNaN(amount) ? 0 : amount, notes: notesVal });
       });
     });
+
     const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
+
+    if (!error) {
+      const nextVerNo = (versions[0]?.version_number || 0) + 1;
+      const summaryText = changesList.length
+        ? `Modified ${changesList.length} line(s):\n• ` + changesList.join("\n• ")
+        : `Version v${nextVerNo}.0 - Saved budget for ${year}`;
+
+      await supabase.from("it_budget_versions").insert({
+        budget_year: year,
+        version_number: nextVerNo,
+        version_name: `v${nextVerNo}.0`,
+        change_summary: summaryText,
+        snapshot_data: snapshotItems,
+        created_by: profile?.full_name || profile?.email || "Admin",
+      });
+
+      load();
+    }
+
     setSaving(false);
-    setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Budget and remarks for ${year} saved.` });
-    if (!error) load();
+    setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Budget & Version v${(versions[0]?.version_number || 0) + 1}.0 for ${year} saved.` });
+  }
+
+  async function restoreVersion(ver) {
+    if (!confirm(`⚠️ Are you sure you want to restore Version v${ver.version_number}.0? This will override current active budget values for ${year}.`)) return;
+
+    setLoading(true);
+    const snap = ver.snapshot_data || [];
+    const payload = snap.map((item) => ({
+      budget_year: year,
+      category_id: item.category_id,
+      scope: item.scope,
+      amount: item.amount || 0,
+      notes: item.notes || null,
+    }));
+
+    const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
+    if (error) {
+      alert("Error restoring version: " + error.message);
+      setLoading(false);
+    } else {
+      const nextVerNo = (versions[0]?.version_number || 0) + 1;
+      await supabase.from("it_budget_versions").insert({
+        budget_year: year,
+        version_number: nextVerNo,
+        version_name: `v${nextVerNo}.0 (Restored from v${ver.version_number}.0)`,
+        change_summary: `Restored active budget state to Version v${ver.version_number}.0 (${ver.version_name || ""})`,
+        snapshot_data: snap,
+        created_by: profile?.full_name || profile?.email || "Admin",
+      });
+
+      alert(`Successfully restored active budget to Version v${ver.version_number}.0!`);
+      setHistoryOpen(false);
+      load();
+    }
   }
 
   function exportCsv() {
@@ -160,7 +237,7 @@ export default function BudgetsPage() {
   return (
     <Shell
       title="Budget vs Actual"
-      subtitle="Category-wise budget split by local and global staff with remarks"
+      subtitle="Category-wise budget split by local and global staff with remarks & version history"
       actions={
         <>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 110 }}>
@@ -168,6 +245,13 @@ export default function BudgetsPage() {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+          <button
+            className="btn ghost sm"
+            onClick={() => setHistoryOpen(true)}
+            style={{ borderColor: "var(--gold)", color: "var(--gold)" }}
+          >
+            📜 Version History ({versions.length ? `v${versions[0].version_number}.0` : "v1.0"})
+          </button>
           <button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>
           {isAdmin && <button className="btn sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save budget"}</button>}
         </>
@@ -237,6 +321,172 @@ export default function BudgetsPage() {
           </div>
         )}
       </Card>
+
+      {historyOpen && (
+        <Modal title={`📜 Budget Version Control & Revision History — ${year}`} onClose={() => setHistoryOpen(false)}>
+          <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, minHeight: 460 }}>
+            {/* Left Sidebar: Version List */}
+            <div style={{ borderRight: "1px solid var(--hs-charcoal)", paddingRight: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>
+                Revisions ({versions.length})
+              </div>
+              {versions.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--faint)", fontStyle: "italic" }}>
+                  No revisions recorded yet for {year}. Saving budget changes automatically creates a new version snapshot.
+                </div>
+              ) : (
+                versions.map((ver, idx) => {
+                  const isSelected = (selectedVer?.id || versions[0]?.id) === ver.id;
+                  return (
+                    <div
+                      key={ver.id}
+                      onClick={() => setSelectedVer(ver)}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        background: isSelected ? "var(--gold-dim)" : "rgba(255,255,255,0.03)",
+                        border: isSelected ? "1px solid var(--gold)" : "1px solid var(--line-soft)",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 700, color: isSelected ? "var(--gold)" : "var(--text)" }}>
+                          {ver.version_name || `v${ver.version_number}.0`}
+                        </span>
+                        {idx === 0 && <span className="pill gold" style={{ fontSize: 10 }}>Current</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                        {new Date(ver.created_at).toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>
+                        By {ver.created_by || "Admin"}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Right Main Panel: Selected Version Details & Diff */}
+            <div>
+              {(() => {
+                const activeVer = selectedVer || versions[0];
+                if (!activeVer) return <Empty>No version history recorded yet.</Empty>;
+
+                const activeIdx = versions.findIndex((v) => v.id === activeVer.id);
+                const prevVer = versions[activeIdx + 1];
+
+                const currentSnap = activeVer.snapshot_data || [];
+                const prevSnap = prevVer?.snapshot_data || [];
+
+                const prevMap = new Map(prevSnap.map((item) => [`${item.category_id}|${item.scope}`, item]));
+
+                const diffRows = currentSnap.map((cur) => {
+                  const key = `${cur.category_id}|${cur.scope}`;
+                  const prev = prevMap.get(key) || { amount: 0, notes: "" };
+                  const curAmt = Number(cur.amount || 0);
+                  const prevAmt = Number(prev.amount || 0);
+                  const diffAmt = curAmt - prevAmt;
+                  return {
+                    ...cur,
+                    prevAmt,
+                    diffAmt,
+                    prevNotes: prev.notes || "",
+                    hasChanged: diffAmt !== 0 || (cur.notes || "") !== (prev.notes || ""),
+                  };
+                });
+
+                const totalCur = currentSnap.reduce((a, b) => a + Number(b.amount || 0), 0);
+                const totalPrev = prevSnap.reduce((a, b) => a + Number(b.amount || 0), 0);
+                const totalDiff = totalCur - totalPrev;
+
+                return (
+                  <div className="stack" style={{ gap: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--hs-charcoal)", paddingBottom: 10 }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 16, color: "var(--gold)" }}>
+                          {activeVer.version_name || `Version v${activeVer.version_number}.0`}
+                        </h3>
+                        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                          Saved on {new Date(activeVer.created_at).toLocaleString()} by <strong>{activeVer.created_by || "Admin"}</strong>
+                        </div>
+                      </div>
+                      {isAdmin && activeIdx !== 0 && (
+                        <button className="btn sm" onClick={() => restoreVersion(activeVer)}>
+                          ↺ Restore Version v{activeVer.version_number}.0
+                        </button>
+                      )}
+                    </div>
+
+                    {activeVer.change_summary && (
+                      <div className="alert info" style={{ whiteSpace: "pre-line", fontSize: 12 }}>
+                        <strong>Summary of Changes:</strong>
+                        {"\n"}{activeVer.change_summary}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", gap: 16 }}>
+                      <div style={{ flex: 1, padding: 10, background: "rgba(255,255,255,0.02)", borderRadius: 6, border: "1px solid var(--hs-charcoal)" }}>
+                        <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase" }}>Version Budget Total</div>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }} className="mono">{money(totalCur)}</div>
+                      </div>
+                      {prevVer && (
+                        <div style={{ flex: 1, padding: 10, background: "rgba(255,255,255,0.02)", borderRadius: 6, border: "1px solid var(--hs-charcoal)" }}>
+                          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase" }}>vs Previous Version (v{prevVer.version_number}.0)</div>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: totalDiff > 0 ? "var(--green)" : totalDiff < 0 ? "var(--red)" : "var(--faint)" }} className="mono">
+                            {totalDiff === 0 ? "No Net Change" : `${totalDiff > 0 ? "+" : ""}${money(totalDiff)}`}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6 }}>
+                      Line-by-Line Breakdown & Changes {prevVer ? `(vs v${prevVer.version_number}.0)` : "(Initial Snapshot)"}
+                    </div>
+
+                    <div className="table-wrap" style={{ maxHeight: 300, overflowY: "auto" }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Category</th>
+                            <th>Scope</th>
+                            {prevVer && <th className="num">Previous (v{prevVer.version_number}.0)</th>}
+                            <th className="num">Version Amount</th>
+                            {prevVer && <th className="num">Difference</th>}
+                            <th>Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {diffRows.map((r, i) => (
+                            <tr key={i} style={{ background: r.hasChanged ? "rgba(255,204,0,0.08)" : "transparent" }}>
+                              <td style={{ fontWeight: 600 }}>{r.name}</td>
+                              <td><span className={`pill ${r.scope === "global" ? "blue" : "grey"}`}>{r.scope}</span></td>
+                              {prevVer && <td className="num mono" style={{ color: "var(--muted)" }}>{money(r.prevAmt)}</td>}
+                              <td className="num mono" style={{ fontWeight: 600 }}>{money(r.amount)}</td>
+                              {prevVer && (
+                                <td className="num mono" style={{ fontWeight: 700, color: r.diffAmt > 0 ? "var(--green)" : r.diffAmt < 0 ? "var(--red)" : "var(--faint)" }}>
+                                  {r.diffAmt === 0 ? "—" : `${r.diffAmt > 0 ? "+" : ""}${money(r.diffAmt)}`}
+                                </td>
+                              )}
+                              <td style={{ fontSize: 12, color: "var(--muted)" }}>
+                                {r.notes || "—"}
+                                {prevVer && r.prevNotes && r.prevNotes !== r.notes && (
+                                  <div style={{ fontSize: 11, color: "var(--faint)", textDecoration: "line-through" }}>Prev: {r.prevNotes}</div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </Modal>
+      )}
     </Shell>
   );
 }
