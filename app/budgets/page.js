@@ -24,6 +24,7 @@ export default function BudgetsPage() {
   const [rows, setRows] = useState([]);
   const [assets, setAssets] = useState([]);
   const [draft, setDraft] = useState({});
+  const [draftNotes, setDraftNotes] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -39,8 +40,13 @@ export default function BudgetsPage() {
     setRows(s.data || []);
     setAssets(a.data || []);
     const d = {};
-    (s.data || []).forEach((r) => { d[`${r.category_id}|${r.scope}`] = String(r.amount); });
+    const dn = {};
+    (s.data || []).forEach((r) => {
+      d[`${r.category_id}|${r.scope}`] = String(r.amount);
+      dn[`${r.category_id}|${r.scope}`] = r.notes || "";
+    });
     setDraft(d);
+    setDraftNotes(dn);
     setLoading(false);
   }, [year]);
 
@@ -48,7 +54,11 @@ export default function BudgetsPage() {
 
   const view = useMemo(() => {
     const budgetMap = new Map();
-    rows.forEach((r) => budgetMap.set(`${r.category_id}|${r.scope}`, Number(r.amount || 0)));
+    const notesMap = new Map();
+    rows.forEach((r) => {
+      budgetMap.set(`${r.category_id}|${r.scope}`, Number(r.amount || 0));
+      notesMap.set(`${r.category_id}|${r.scope}`, r.notes || "");
+    });
 
     const consumedMap = new Map();
     assets.filter(isIncludedInBudget).forEach((a) => {
@@ -59,12 +69,14 @@ export default function BudgetsPage() {
     return categories.map((c) => {
       const lb = budgetMap.get(`${c.id}|local`) || 0;
       const lc = consumedMap.get(`${c.id}|local`) || 0;
+      const ln = notesMap.get(`${c.id}|local`) || "";
       const gb = budgetMap.get(`${c.id}|global`) || 0;
       const gc = consumedMap.get(`${c.id}|global`) || 0;
+      const gn = notesMap.get(`${c.id}|global`) || "";
       return {
         id: c.id, name: c.name,
-        local: { budget: lb, consumed: lc },
-        global: { budget: gb, consumed: gc },
+        local: { budget: lb, consumed: lc, notes: ln },
+        global: { budget: gb, consumed: gc, notes: gn },
       };
     });
   }, [categories, rows, assets]);
@@ -86,14 +98,15 @@ export default function BudgetsPage() {
       ["local", "global"].forEach((scope) => {
         const key = `${c.id}|${scope}`;
         const raw = draft[key];
+        const notesVal = draftNotes[key] || null;
         const amount = Number(raw || 0);
-        if (!raw && !rows.find((r) => `${r.category_id}|${r.scope}` === key && Number(r.budget_amount) > 0)) return;
-        payload.push({ budget_year: year, category_id: c.id, scope, amount: isNaN(amount) ? 0 : amount });
+        if (!raw && !notesVal && !rows.find((r) => `${r.category_id}|${r.scope}` === key && Number(r.amount) > 0)) return;
+        payload.push({ budget_year: year, category_id: c.id, scope, amount: isNaN(amount) ? 0 : amount, notes: notesVal });
       });
     });
     const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
     setSaving(false);
-    setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Budget for ${year} saved.` });
+    setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Budget and remarks for ${year} saved.` });
     if (!error) load();
   }
 
@@ -101,12 +114,14 @@ export default function BudgetsPage() {
     csvDownload(`budget-vs-actual-${year}.csv`, view.flatMap((v) => ["local", "global"].map((s) => ({
       year, category: v.name, scope: s,
       budget: v[s].budget, consumed: v[s].consumed, balance: v[s].budget - v[s].consumed,
+      remarks: draftNotes[`${v.id}|${s}`] || v[s].notes || "",
     }))));
   }
 
   const cell = (v, scope, id) => {
     const bal = v[scope].budget - v[scope].consumed;
     const pct = v[scope].budget ? (v[scope].consumed / v[scope].budget) * 100 : v[scope].consumed ? 100 : 0;
+    const key = `${id}|${scope}`;
     return (
       <>
         <td className="num" style={{ minWidth: 118 }}>
@@ -114,15 +129,30 @@ export default function BudgetsPage() {
             <input
               type="number" min="0" step="1000" className="mono"
               style={{ textAlign: "right", padding: "6px 8px" }}
-              value={draft[`${id}|${scope}`] ?? ""}
+              value={draft[key] ?? ""}
               placeholder="0"
-              onChange={(e) => setDraft({ ...draft, [`${id}|${scope}`]: e.target.value })}
+              onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
             />
           ) : money(v[scope].budget)}
         </td>
         <td className="num mono">{money(v[scope].consumed)}</td>
         <td className="num mono" style={{ color: bal < 0 ? "var(--red)" : "var(--text)" }}>{money(bal)}</td>
-        <td style={{ width: 96 }}><Progress pct={pct} /></td>
+        <td style={{ width: 80 }}><Progress pct={pct} /></td>
+        <td style={{ minWidth: 160 }}>
+          {isAdmin ? (
+            <input
+              type="text"
+              style={{ padding: "4px 8px", fontSize: 12, width: "100%" }}
+              value={draftNotes[key] ?? ""}
+              placeholder="Why added / justification…"
+              onChange={(e) => setDraftNotes({ ...draftNotes, [key]: e.target.value })}
+            />
+          ) : (
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>
+              {draftNotes[key] || v[scope].notes || "—"}
+            </span>
+          )}
+        </td>
       </>
     );
   };
@@ -130,7 +160,7 @@ export default function BudgetsPage() {
   return (
     <Shell
       title="Budget vs Actual"
-      subtitle="Category-wise budget split by local and global staff"
+      subtitle="Category-wise budget split by local and global staff with remarks"
       actions={
         <>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 110 }}>
@@ -144,7 +174,7 @@ export default function BudgetsPage() {
       }
     >
       {msg && <div className={`alert ${msg.t}`}>{msg.m}</div>}
-      {!isAdmin && <div className="alert info">You have read-only access. Budget figures can only be edited by an administrator.</div>}
+      {!isAdmin && <div className="alert info">You have read-only access. Budget figures and remarks can only be edited by an administrator.</div>}
 
       <Card title={`Calendar year ${year}`} hint="Consumption is matched to purchases by category, staff scope and purchase date">
         {loading ? <div className="loading">Loading…</div> : view.length === 0 ? (
@@ -154,9 +184,9 @@ export default function BudgetsPage() {
             <table>
               <thead>
                 <tr>
-                  <th rowSpan="2" style={{ minWidth: 170 }}>Category</th>
-                  <th colSpan="4" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Local staff</th>
-                  <th colSpan="4" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Global staff</th>
+                  <th rowSpan="2" style={{ minWidth: 160 }}>Category</th>
+                  <th colSpan="5" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Local staff</th>
+                  <th colSpan="5" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Global staff</th>
                   <th rowSpan="2" className="num">Total balance</th>
                 </tr>
                 <tr>
@@ -164,10 +194,12 @@ export default function BudgetsPage() {
                   <th className="num">Consumed</th>
                   <th className="num">Balance</th>
                   <th>Used</th>
+                  <th>Remarks / Justification</th>
                   <th className="num" style={{ borderLeft: "1px solid var(--line-soft)" }}>Budget</th>
                   <th className="num">Consumed</th>
                   <th className="num">Balance</th>
                   <th>Used</th>
+                  <th>Remarks / Justification</th>
                 </tr>
               </thead>
               <tbody>
@@ -175,7 +207,7 @@ export default function BudgetsPage() {
                   const tb = v.local.budget + v.global.budget - v.local.consumed - v.global.consumed;
                   return (
                     <tr key={v.id}>
-                      <td>{v.name}</td>
+                      <td style={{ fontWeight: 600 }}>{v.name}</td>
                       {cell(v, "local", v.id)}
                       {cell(v, "global", v.id)}
                       <td className="num mono" style={{ color: tb < 0 ? "var(--red)" : "var(--text)", fontWeight: 600 }}>
@@ -192,9 +224,11 @@ export default function BudgetsPage() {
                   <td className="num mono">{money(totals.lc)}</td>
                   <td className="num mono">{money(totals.lb - totals.lc)}</td>
                   <td />
+                  <td />
                   <td className="num mono">{money(totals.gb)}</td>
                   <td className="num mono">{money(totals.gc)}</td>
                   <td className="num mono">{money(totals.gb - totals.gc)}</td>
+                  <td />
                   <td />
                   <td className="num mono">{money(totals.lb + totals.gb - totals.lc - totals.gc)}</td>
                 </tr>

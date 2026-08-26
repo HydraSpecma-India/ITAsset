@@ -16,6 +16,7 @@ export default function PlanningPage() {
   const [assets, setAssets] = useState([]);
   const [plan, setPlan] = useState([]);
   const [draft, setDraft] = useState({});
+  const [draftNotes, setDraftNotes] = useState({});
   const [uplift, setUplift] = useState(10);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
@@ -34,8 +35,13 @@ export default function PlanningPage() {
     setAssets(a.data || []);
     setPlan(p.data || []);
     const d = {};
-    (p.data || []).forEach((r) => { d[`${r.category_id}|${r.scope}`] = String(r.planned_amount); });
+    const dn = {};
+    (p.data || []).forEach((r) => {
+      d[`${r.category_id}|${r.scope}`] = String(r.planned_amount);
+      dn[`${r.category_id}|${r.scope}`] = r.notes || "";
+    });
     setDraft(d);
+    setDraftNotes(dn);
     setLoading(false);
   }, [planYear]);
 
@@ -119,6 +125,7 @@ export default function PlanningPage() {
       plan_year: planYear, category_id: r.category_id, scope: r.scope,
       planned_amount: Number(draft[r.key] || 0),
       basis: `Prior-year actual ${Math.round(r.curActual)}; committed renewals ${Math.round(r.committed)}`,
+      notes: draftNotes[r.key] || null,
     }));
     const { error } = await supabase.from("it_plan_lines").upsert(payload, { onConflict: "plan_year,category_id,scope" });
     setSaving(false);
@@ -131,7 +138,7 @@ export default function PlanningPage() {
     const payload = rows.map((r) => ({
       budget_year: planYear, category_id: r.category_id, scope: r.scope,
       amount: Number(draft[r.key] || 0),
-      notes: `Approved from ${planYear} proposal`,
+      notes: draftNotes[r.key] || `Approved from ${planYear} proposal`,
     }));
     const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
     setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Approved budget for ${planYear} created. See Budget vs Actual.` });
@@ -142,6 +149,7 @@ export default function PlanningPage() {
       plan_year: planYear, category: r.name, scope: r.scope,
       actual_prev: r.prevActual, budget_last: r.curBudget, actual_last: r.curActual,
       committed_renewals: r.committed, suggested: r.suggested, proposed: Number(draft[r.key] || 0),
+      remarks: draftNotes[r.key] || r.existing?.notes || "",
     })));
   }
 
@@ -198,6 +206,7 @@ export default function PlanningPage() {
                   <th className="num">Suggested</th>
                   <th className="num">Proposed {planYear}</th>
                   <th className="num">vs last budget</th>
+                  <th>Remarks / Justification</th>
                 </tr>
               </thead>
               <tbody>
@@ -206,7 +215,7 @@ export default function PlanningPage() {
                   const delta = proposed - r.curBudget;
                   return (
                     <tr key={r.key}>
-                      <td>{r.name}</td>
+                      <td style={{ fontWeight: 600 }}>{r.name}</td>
                       <td><span className={`pill ${r.scope === "global" ? "blue" : "grey"}`}>{r.scope === "global" ? "Global" : "Local"}</span></td>
                       <td className="num mono" style={{ color: "var(--faint)" }}>{money(r.prevActual)}</td>
                       <td className="num mono">{money(r.curBudget)}</td>
@@ -223,6 +232,21 @@ export default function PlanningPage() {
                       <td className="num mono" style={{ color: delta > 0 ? "var(--amber)" : delta < 0 ? "var(--green)" : "var(--faint)" }}>
                         {delta === 0 ? "—" : `${delta > 0 ? "+" : ""}${moneyShort(delta)}`}
                       </td>
+                      <td style={{ minWidth: 180 }}>
+                        {isAdmin ? (
+                          <input
+                            type="text"
+                            style={{ padding: "4px 8px", fontSize: 12, width: "100%" }}
+                            value={draftNotes[r.key] ?? ""}
+                            placeholder="Why added / justification…"
+                            onChange={(e) => setDraftNotes({ ...draftNotes, [r.key]: e.target.value })}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                            {draftNotes[r.key] || r.existing?.notes || "—"}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -237,6 +261,7 @@ export default function PlanningPage() {
                   <td className="num mono">{money(totals.suggested)}</td>
                   <td className="num mono" style={{ color: "var(--gold-soft)" }}>{money(totals.planned)}</td>
                   <td className="num mono">{moneyShort(totals.planned - totals.curBudget)}</td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
