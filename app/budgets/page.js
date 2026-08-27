@@ -45,16 +45,15 @@ export default function BudgetsPage() {
 
     if (dept && dept !== "All") {
       if (dept === "IT") {
-        catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
         budgetQuery = budgetQuery.or("budget_department.eq.IT,budget_department.is.null");
         assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
         verQuery = verQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        catQuery = catQuery.eq("budget_department", dept);
         budgetQuery = budgetQuery.eq("budget_department", dept);
         assetQuery = assetQuery.eq("budget_department", dept);
         verQuery = verQuery.eq("budget_department", dept);
       }
+      catQuery = catQuery.or(`budget_department.eq.${dept},budget_department.is.null`);
     }
 
     const [c, s, a, v] = await Promise.all([
@@ -84,6 +83,7 @@ export default function BudgetsPage() {
         });
       });
 
+      const targetDept = dept === "All" ? "IT" : dept;
       const { data: createdVer } = await supabase.from("it_budget_versions").insert({
         budget_year: year,
         version_number: 1,
@@ -91,6 +91,7 @@ export default function BudgetsPage() {
         change_summary: `Initial budget snapshot for ${year}`,
         snapshot_data: initSnap,
         created_by: "System / Admin",
+        budget_department: targetDept,
       }).select();
 
       if (createdVer && createdVer.length > 0) {
@@ -104,6 +105,8 @@ export default function BudgetsPage() {
     setVersions(verRows);
     if (verRows.length > 0) {
       setSelectedVer(verRows[0]);
+    } else {
+      setSelectedVer(null);
     }
     const d = {};
     const dn = {};
