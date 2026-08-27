@@ -111,7 +111,7 @@ export default function BudgetsPage() {
     setDraft(d);
     setDraftNotes(dn);
     setLoading(false);
-  }, [year]);
+  }, [year, dept]);
 
   useEffect(() => { load(); }, [load]);
 

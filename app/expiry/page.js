@@ -26,10 +26,15 @@ export default function ExpiryPage() {
   const [q, setQ] = useState("");
 
   useEffect(() => {
+    setLoading(true);
     (async () => {
       let query = supabase.from("v_it_expiry_alerts").select("*").order("expiry_date");
-      if (dept !== "All") {
-        query = query.or(`department.eq.${dept},department.is.null`);
+      if (dept && dept !== "All") {
+        if (dept === "IT") {
+          query = query.or("budget_department.eq.IT,budget_department.is.null");
+        } else {
+          query = query.eq("budget_department", dept);
+        }
       }
       const { data } = await query;
       setRows((data || []).map((r) => ({ ...r, days: daysUntil(r.expiry_date) })));
