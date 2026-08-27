@@ -213,6 +213,20 @@ export default function EmployeesPage() {
     }
   }
 
+  const isGlobalAdmin = profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT");
+
+  if (!isGlobalAdmin) {
+    return (
+      <Shell title="Access Denied" subtitle="Employee & Department master management is restricted to Global Administrators only">
+        <Card title="🔒 Restricted Access">
+          <div style={{ padding: "20px 10px", color: "var(--muted)" }}>
+            Access Denied. Only Global Administrators can view or manage employee records and department master lists.
+          </div>
+        </Card>
+      </Shell>
+    );
+  }
+
   return (
     <Shell
       title="Employees & Departments"
