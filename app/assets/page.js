@@ -187,10 +187,72 @@ export default function AssetsPage() {
     return t;
   }, [filtered]);
 
+  const [erpModalOpen, setErpModalOpen] = useState(false);
+  const [erpTab, setErpTab] = useState("api"); // "api" | "json"
+  const [erpForm, setErpForm] = useState({
+    url: "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets",
+    username: "",
+    password: "",
+    jsonText: "",
+  });
+  const [erpBusy, setErpBusy] = useState(false);
+  const [erpMsg, setErpMsg] = useState(null);
+  const [erpResult, setErpResult] = useState(null);
+
+  async function handleD365Sync(e) {
+    if (e) e.preventDefault();
+    setErpBusy(true);
+    setErpMsg(null);
+    setErpResult(null);
+
+    try {
+      let payload = {
+        targetDept: dept,
+      };
+
+      if (erpTab === "api") {
+        payload.syncMode = "api";
+        payload.erpUrl = erpForm.url.trim();
+        payload.username = erpForm.username.trim();
+        payload.password = erpForm.password;
+      } else {
+        payload.syncMode = "manual";
+        let parsed = [];
+        try {
+          parsed = JSON.parse(erpForm.jsonText.trim());
+        } catch (err) {
+          throw new Error("Invalid JSON format. Please paste valid D365FO FixedAssets JSON array.");
+        }
+        payload.manualItems = parsed;
+      }
+
+      const res = await fetch("/api/d365-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Sync failed");
+      }
+
+      setErpResult(data);
+      setErpMsg({ t: "ok", m: `Successfully synced! ${data.updatedCount} asset(s) updated with D365 Asset Numbers out of ${data.totalErpFetched} ERP records.` });
+      load();
+    } catch (err) {
+      setErpMsg({ t: "err", m: err.message || String(err) });
+    } finally {
+      setErpBusy(false);
+    }
+  }
+
   function startBulkGridEdit() {
     const initial = {};
     filtered.forEach((r) => {
       initial[r.id] = {
+        asset_no: r.asset_no || "",
+        asset_group_id: r.asset_group_id || "",
         category_id: r.category_id || "",
         scope: r.scope || "local",
         staff_name: r.staff_name || "",
@@ -210,6 +272,8 @@ export default function AssetsPage() {
         const f = bulkForms[r.id];
         if (!f) continue;
         if (
+          f.asset_no !== r.asset_no ||
+          f.asset_group_id !== r.asset_group_id ||
           f.category_id !== r.category_id ||
           f.scope !== r.scope ||
           f.staff_name !== r.staff_name ||
@@ -218,6 +282,8 @@ export default function AssetsPage() {
           f.remarks !== r.remarks
         ) {
           await supabase.from("it_assets").update({
+            asset_no: f.asset_no || null,
+            asset_group_id: f.asset_group_id || null,
             category_id: f.category_id || null,
             scope: f.scope || "local",
             staff_name: f.staff_name || null,
@@ -238,14 +304,30 @@ export default function AssetsPage() {
 
   function exportCsv() {
     csvDownload("asset-register.csv", filtered.map((r) => ({
-      asset_name: r.asset_name, asset_tag: r.asset_tag || "", serial_no: r.serial_no || "",
-      model: r.model || "", category: r.it_categories?.name || "", scope: r.scope,
+      asset_name: r.asset_name,
+      asset_no_erp: r.asset_no || "",
+      asset_group_id: r.asset_group_id || "",
+      asset_tag: r.asset_tag || "",
+      serial_no: r.serial_no || "",
+      model: r.model || "",
+      category: r.it_categories?.name || "",
+      scope: r.scope,
       include_in_it_budget: r.include_in_budget !== false ? "Yes" : "No (Admin/Dept)",
-      item_type: r.item_type, staff_name: r.staff_name || "", department: r.department || "",
-      location: r.location || "", quantity: r.quantity, unit_cost: r.unit_cost, line_total: r.line_total,
-      purchase_date: r.purchase_date, warranty_end: r.warranty_end || "", license_end: r.license_end || "",
-      amc_end: r.amc_end || "", replacement_due: r.replacement_due || "", status: r.status,
-      invoice_no: r.it_invoices?.invoice_no || "", vendor: r.it_invoices?.it_vendors?.name || "",
+      item_type: r.item_type,
+      staff_name: r.staff_name || "",
+      department: r.department || "",
+      location: r.location || "",
+      quantity: r.quantity,
+      unit_cost: r.unit_cost,
+      line_total: r.line_total,
+      purchase_date: r.purchase_date,
+      warranty_end: r.warranty_end || "",
+      license_end: r.license_end || "",
+      amc_end: r.amc_end || "",
+      replacement_due: r.replacement_due || "",
+      status: r.status,
+      invoice_no: r.it_invoices?.invoice_no || "",
+      vendor: r.it_invoices?.it_vendors?.name || "",
     })));
   }
 
@@ -401,6 +483,16 @@ export default function AssetsPage() {
       actions={
         <div style={{ display: "flex", gap: 10 }}>
           {isAdmin && (
+            <button
+              className="btn ghost sm"
+              onClick={() => setErpModalOpen(true)}
+              style={{ color: "var(--gold)", borderColor: "var(--gold)", fontWeight: 700 }}
+              title="Sync FixedAssetNumber and FixedAssetGroupId from Microsoft Dynamics 365 FO ERP"
+            >
+              🔄 Sync D365 ERP
+            </button>
+          )}
+          {isAdmin && (
             bulkEdit ? (
               <>
                 <button className="btn sm" onClick={saveBulkGridEdit} disabled={bulkSaving}>
@@ -542,6 +634,7 @@ export default function AssetsPage() {
               <thead>
                 <tr>
                   <th>Asset</th>
+                  <th>Asset No (ERP)</th>
                   <th>Category</th>
                   {!isEmployee && <th>Scope</th>}
                   {!isEmployee && <th>IT Budget?</th>}
@@ -570,6 +663,22 @@ export default function AssetsPage() {
                           <div style={{ fontSize: 11, color: "var(--faint)" }}>
                             {[r.asset_tag, r.model, r.serial_no].filter(Boolean).join(" · ") || "—"}
                           </div>
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            placeholder="D365 Asset No"
+                            value={bForm.asset_no || ""}
+                            onChange={(e) => setBulkForms({ ...bulkForms, [r.id]: { ...bForm, asset_no: e.target.value } })}
+                            style={{ padding: "4px 6px", fontSize: 12, width: 110 }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Group ID"
+                            value={bForm.asset_group_id || ""}
+                            onChange={(e) => setBulkForms({ ...bulkForms, [r.id]: { ...bForm, asset_group_id: e.target.value } })}
+                            style={{ padding: "3px 6px", fontSize: 11, width: 110, marginTop: 2 }}
+                          />
                         </td>
                         <td>
                           <select
@@ -667,6 +776,9 @@ export default function AssetsPage() {
                           </div>
                         </td>
                         <td>
+                          <span className="pill gold" style={{ fontSize: 11 }}>{r.asset_no || "—"}</span>
+                        </td>
+                        <td>
                           <select
                             value={editForm.category_id}
                             onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value })}
@@ -757,6 +869,20 @@ export default function AssetsPage() {
                         </div>
                       </td>
                       <td>
+                        {r.asset_no ? (
+                          <div>
+                            <span className="pill gold" style={{ fontSize: 11, padding: "2px 6px" }}>{r.asset_no}</span>
+                            {r.asset_group_id && (
+                              <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 2 }}>
+                                Grp: {r.asset_group_id}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 11, color: "var(--faint)" }}>—</span>
+                        )}
+                      </td>
+                      <td>
                         <div style={{ fontWeight: 600 }}>{r.it_categories?.name || "—"}</div>
                         {r.it_categories?.category_type && (
                           <span className={`pill ${r.it_categories.category_type === "opex" ? "amber" : "blue"}`} style={{ fontSize: 9, padding: "1px 5px", marginTop: 2 }}>
@@ -824,7 +950,7 @@ export default function AssetsPage() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={isEmployee ? 6 : 9}>Total</td>
+                  <td colSpan={isEmployee ? 7 : 10}>Total</td>
                   <td className="num mono">{totals.qty}</td>
                   {!isEmployee && <td className="num mono">{money(totals.value)}</td>}
                   {isAdmin && <td />}
@@ -834,6 +960,132 @@ export default function AssetsPage() {
           </div>
         )}
       </Card>
+
+      {erpModalOpen && (
+        <div className="modal-backdrop" onClick={() => setErpModalOpen(false)}>
+          <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                <span>🔄 Sync D365FO ERP Fixed Assets</span>
+              </h3>
+              <button className="btn ghost sm" onClick={() => setErpModalOpen(false)}>✕</button>
+            </div>
+
+            <div className="btn-row" style={{ marginTop: 12, marginBottom: 16 }}>
+              <button
+                className={`btn ${erpTab === "api" ? "" : "ghost"} sm`}
+                onClick={() => setErpTab("api")}
+              >
+                🌐 Live D365FO OData Endpoint
+              </button>
+              <button
+                className={`btn ${erpTab === "json" ? "" : "ghost"} sm`}
+                onClick={() => setErpTab("json")}
+              >
+                📄 Paste / Upload D365 JSON Export
+              </button>
+            </div>
+
+            {erpMsg && (
+              <div className={`alert ${erpMsg.t === "ok" ? "success" : "danger"}`} style={{ marginBottom: 14 }}>
+                {erpMsg.m}
+              </div>
+            )}
+
+            {erpTab === "api" ? (
+              <form onSubmit={handleD365Sync}>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label className="field-label">D365FO FixedAssets Endpoint URL</label>
+                  <input
+                    type="text"
+                    value={erpForm.url}
+                    onChange={(e) => setErpForm({ ...erpForm, url: e.target.value })}
+                    placeholder="https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets"
+                    required
+                  />
+                  <span style={{ fontSize: 11, color: "var(--faint)" }}>
+                    Endpoint: https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets
+                  </span>
+                </div>
+
+                <div className="grid g2" style={{ marginBottom: 16 }}>
+                  <div className="field">
+                    <label className="field-label">ERP Username / Email</label>
+                    <input
+                      type="text"
+                      value={erpForm.username}
+                      onChange={(e) => setErpForm({ ...erpForm, username: e.target.value })}
+                      placeholder="e.g. erp.admin@hydraspecma.com"
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-label">ERP Password / Secret</label>
+                    <input
+                      type="password"
+                      value={erpForm.password}
+                      onChange={(e) => setErpForm({ ...erpForm, password: e.target.value })}
+                      placeholder="••••••••••••"
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                    Auto-matches by Serial No, Asset Tag & Asset Name
+                  </span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="btn ghost sm" onClick={() => setErpModalOpen(false)}>Cancel</button>
+                    <button type="submit" className="btn sm" disabled={erpBusy}>
+                      {erpBusy ? "Connecting & Syncing…" : "⚡ Start Live D365 Sync"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleD365Sync}>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label className="field-label">Paste D365FO FixedAssets JSON Array</label>
+                  <textarea
+                    rows={8}
+                    value={erpForm.jsonText}
+                    onChange={(e) => setErpForm({ ...erpForm, jsonText: e.target.value })}
+                    placeholder={`[\n  {\n    "FixedAssetNumber": "FA-001928",\n    "FixedAssetGroupId": "COMP-HW",\n    "Name": "Dell Latitude 5540 Laptop",\n    "SerialNumber": "SN-9812938"\n  }\n]`}
+                    style={{ fontFamily: "monospace", fontSize: 12 }}
+                    required
+                  />
+                </div>
+
+                <div className="modal-footer" style={{ justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                    Extracts FixedAssetNumber & FixedAssetGroupId
+                  </span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="btn ghost sm" onClick={() => setErpModalOpen(false)}>Cancel</button>
+                    <button type="submit" className="btn sm" disabled={erpBusy}>
+                      {erpBusy ? "Processing…" : "⚡ Sync JSON Data"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {erpResult && erpResult.matchedDetails && erpResult.matchedDetails.length > 0 && (
+              <div style={{ marginTop: 16, borderTop: "1px solid var(--hs-charcoal)", paddingTop: 12 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+                  Matched & Updated Asset Items ({erpResult.matchedDetails.length}):
+                </div>
+                <div style={{ maxHeight: 160, overflowY: "auto", fontSize: 12 }}>
+                  {erpResult.matchedDetails.map((item, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                      <span>{item.asset_name}</span>
+                      <span className="mono gold">Asset No: {item.asset_no} ({item.group_id})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }
