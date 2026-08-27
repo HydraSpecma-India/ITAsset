@@ -20,6 +20,7 @@ export default function BudgetsPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
   const [year, setYear] = useState(currentYear());
+  const [typeFilter, setTypeFilter] = useState("all");
   const [categories, setCategories] = useState([]);
   const [rows, setRows] = useState([]);
   const [assets, setAssets] = useState([]);
@@ -109,26 +110,35 @@ export default function BudgetsPage() {
       consumedMap.set(k, (consumedMap.get(k) || 0) + Number(a.line_total || 0));
     });
 
-    return categories.map((c) => {
-      const lb = budgetMap.get(`${c.id}|local`) || 0;
-      const lc = consumedMap.get(`${c.id}|local`) || 0;
-      const ln = notesMap.get(`${c.id}|local`) || "";
-      const gb = budgetMap.get(`${c.id}|global`) || 0;
-      const gc = consumedMap.get(`${c.id}|global`) || 0;
-      const gn = notesMap.get(`${c.id}|global`) || "";
-      return {
-        id: c.id, name: c.name,
-        local: { budget: lb, consumed: lc, notes: ln },
-        global: { budget: gb, consumed: gc, notes: gn },
-      };
-    });
-  }, [categories, rows, assets]);
+    return categories
+      .filter((c) => typeFilter === "all" || (c.category_type || "capex") === typeFilter)
+      .map((c) => {
+        const lb = budgetMap.get(`${c.id}|local`) || 0;
+        const lc = consumedMap.get(`${c.id}|local`) || 0;
+        const ln = notesMap.get(`${c.id}|local`) || "";
+        const gb = budgetMap.get(`${c.id}|global`) || 0;
+        const gc = consumedMap.get(`${c.id}|global`) || 0;
+        const gn = notesMap.get(`${c.id}|global`) || "";
+        return {
+          id: c.id, name: c.name, category_type: c.category_type || "capex",
+          local: { budget: lb, consumed: lc, notes: ln },
+          global: { budget: gb, consumed: gc, notes: gn },
+        };
+      });
+  }, [categories, rows, assets, typeFilter]);
 
   const totals = useMemo(() => {
-    const t = { lb: 0, lc: 0, gb: 0, gc: 0 };
+    const t = { lb: 0, lc: 0, gb: 0, gc: 0, capexBudget: 0, capexConsumed: 0, opexBudget: 0, opexConsumed: 0 };
     view.forEach((v) => {
       t.lb += v.local.budget; t.lc += v.local.consumed;
       t.gb += v.global.budget; t.gc += v.global.consumed;
+      if ((v.category_type || "capex") === "opex") {
+        t.opexBudget += v.local.budget + v.global.budget;
+        t.opexConsumed += v.local.consumed + v.global.consumed;
+      } else {
+        t.capexBudget += v.local.budget + v.global.budget;
+        t.capexConsumed += v.local.consumed + v.global.consumed;
+      }
     });
     return t;
   }, [view]);
@@ -266,7 +276,7 @@ export default function BudgetsPage() {
 
   function exportCsv() {
     csvDownload(`budget-vs-actual-${year}.csv`, view.flatMap((v) => ["local", "global"].map((s) => ({
-      year, category: v.name, scope: s,
+      year, category: v.name, type: (v.category_type || "capex").toUpperCase(), scope: s,
       budget: v[s].budget, consumed: v[s].consumed, balance: v[s].budget - v[s].consumed,
       remarks: draftNotes[`${v.id}|${s}`] || v[s].notes || "",
     }))));
@@ -314,13 +324,18 @@ export default function BudgetsPage() {
   return (
     <Shell
       title="Budget vs Actual"
-      subtitle="Category-wise budget split by local and global staff with remarks & version history"
+      subtitle="Category-wise budget split by local and global staff with CapEx / OpEx & version history"
       actions={
         <>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 110 }}>
             {[currentYear() + 1, currentYear(), currentYear() - 1, currentYear() - 2].map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
+          </select>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{ width: 120 }}>
+            <option value="all">All Types</option>
+            <option value="capex">CapEx Only</option>
+            <option value="opex">OpEx Only</option>
           </select>
           <button
             className="btn ghost sm"
@@ -336,6 +351,23 @@ export default function BudgetsPage() {
     >
       {msg && <div className={`alert ${msg.t}`}>{msg.m}</div>}
       {!isAdmin && <div className="alert info">You have read-only access. Budget figures and remarks can only be edited by an administrator.</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+        <div style={{ padding: 14, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--blue)", textTransform: "uppercase" }}>CapEx (Capital Expenditure)</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+            <span style={{ fontSize: 20, fontWeight: 700 }} className="mono">{money(totals.capexBudget)}</span>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>Consumed: <strong>{money(totals.capexConsumed)}</strong></span>
+          </div>
+        </div>
+        <div style={{ padding: 14, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--amber)", textTransform: "uppercase" }}>OpEx (Operating Expenditure)</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+            <span style={{ fontSize: 20, fontWeight: 700 }} className="mono">{money(totals.opexBudget)}</span>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>Consumed: <strong>{money(totals.opexConsumed)}</strong></span>
+          </div>
+        </div>
+      </div>
 
       <Card title={`Calendar year ${year}`} hint="Consumption is matched to purchases by category, staff scope and purchase date">
         {loading ? <div className="loading">Loading…</div> : view.length === 0 ? (
@@ -368,7 +400,12 @@ export default function BudgetsPage() {
                   const tb = v.local.budget + v.global.budget - v.local.consumed - v.global.consumed;
                   return (
                     <tr key={v.id}>
-                      <td style={{ fontWeight: 600 }}>{v.name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <div>{v.name}</div>
+                        <span className={`pill ${(v.category_type || "capex") === "opex" ? "amber" : "blue"}`} style={{ fontSize: 9, padding: "1px 6px", marginTop: 3 }}>
+                          {(v.category_type || "capex").toUpperCase()}
+                        </span>
+                      </td>
                       {cell(v, "local", v.id)}
                       {cell(v, "global", v.id)}
                       <td className="num mono" style={{ color: tb < 0 ? "var(--red)" : "var(--text)", fontWeight: 600 }}>

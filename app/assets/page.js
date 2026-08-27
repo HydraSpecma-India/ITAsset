@@ -21,6 +21,7 @@ export default function AssetsPage() {
   const [year, setYear] = useState("all");
   const [month, setMonth] = useState("all");
   const [cat, setCat] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [scope, setScope] = useState("all");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("purchase_date");
@@ -35,7 +36,7 @@ export default function AssetsPage() {
     setLoading(true);
     const [a, c, emp, dept] = await Promise.all([
       supabase.from("it_assets")
-        .select("*, it_categories(name), it_invoices(invoice_no, invoice_date, it_vendors(name))")
+        .select("*, it_categories(name, category_type), it_invoices(invoice_no, invoice_date, it_vendors(name))")
         .order("purchase_date", { ascending: false }),
       supabase.from("it_categories").select("*").order("sort_order"),
       supabase.from("it_employees").select("*").eq("is_active", true).order("full_name"),
@@ -123,6 +124,7 @@ export default function AssetsPage() {
         if (m !== month) return false;
       }
       if (cat !== "all" && r.category_id !== cat) return false;
+      if (typeFilter !== "all" && (r.it_categories?.category_type || "capex") !== typeFilter) return false;
       if (scope !== "all" && r.scope !== scope) return false;
       if (status !== "all" && r.status !== status) return false;
       const isInc = isIncludedInBudget(r);
@@ -141,7 +143,7 @@ export default function AssetsPage() {
       return String(b.purchase_date).localeCompare(String(a.purchase_date));
     });
     return out;
-  }, [rows, q, year, month, cat, scope, status, budgetFilter, sort, isEmployee, profile]);
+  }, [rows, q, year, month, cat, typeFilter, scope, status, budgetFilter, sort, isEmployee, profile]);
 
   const totals = useMemo(() => {
     const t = { value: 0, qty: 0, local: 0, global: 0, itBudget: 0, excluded: 0 };
@@ -459,6 +461,14 @@ export default function AssetsPage() {
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
+        <div className="field">
+          <span className="field-label">CapEx / OpEx</span>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="all">All Types</option>
+            <option value="capex">CapEx Only</option>
+            <option value="opex">OpEx Only</option>
+          </select>
+        </div>
         {!isEmployee && (
           <>
             <div className="field">
@@ -720,7 +730,14 @@ export default function AssetsPage() {
                           {[r.asset_tag, r.model, r.serial_no].filter(Boolean).join(" · ") || "—"}
                         </div>
                       </td>
-                      <td style={{ color: "var(--muted)" }}>{r.it_categories?.name || "—"}</td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{r.it_categories?.name || "—"}</div>
+                        {r.it_categories?.category_type && (
+                          <span className={`pill ${r.it_categories.category_type === "opex" ? "amber" : "blue"}`} style={{ fontSize: 9, padding: "1px 5px", marginTop: 2 }}>
+                            {r.it_categories.category_type.toUpperCase()}
+                          </span>
+                        )}
+                      </td>
                       {!isEmployee && (
                         <td>
                           <button

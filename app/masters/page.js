@@ -36,7 +36,7 @@ export default function MastersPage() {
     const { kind, id, ...rest } = edit;
     if (!rest.name?.trim()) return setErr("Name is required.");
     const payload = kind === "category"
-      ? { name: rest.name.trim(), description: rest.description || null, sort_order: Number(rest.sort_order || 100), is_active: !!rest.is_active }
+      ? { name: rest.name.trim(), description: rest.description || null, category_type: rest.category_type || "capex", sort_order: Number(rest.sort_order || 100), is_active: !!rest.is_active }
       : { name: rest.name.trim(), gst_no: rest.gst_no || null, contact_person: rest.contact_person || null, phone: rest.phone || null, email: rest.email || null, is_active: !!rest.is_active };
     const { error } = id
       ? await supabase.from(table).update(payload).eq("id", id)
@@ -59,7 +59,7 @@ export default function MastersPage() {
       actions={
         isAdmin && (
           <button className="btn sm" onClick={() => setEdit(tab === "categories"
-            ? { kind: "category", name: "", description: "", sort_order: 100, is_active: true }
+            ? { kind: "category", name: "", description: "", category_type: "capex", sort_order: 100, is_active: true }
             : { kind: "vendor", name: "", gst_no: "", contact_person: "", phone: "", email: "", is_active: true })}>
             + New {tab === "categories" ? "category" : "vendor"}
           </button>
@@ -81,7 +81,7 @@ export default function MastersPage() {
             <table>
               <thead>
                 <tr>
-                  <th className="num" style={{ width: 70 }}>Order</th><th>Name</th><th>Description</th><th>Status</th>
+                  <th className="num" style={{ width: 70 }}>Order</th><th>Name</th><th>Type</th><th>Description</th><th>Status</th>
                   {isAdmin && <th />}
                 </tr>
               </thead>
@@ -90,6 +90,11 @@ export default function MastersPage() {
                   <tr key={c.id}>
                     <td className="num mono">{c.sort_order}</td>
                     <td style={{ fontWeight: 600 }}>{c.name}</td>
+                    <td>
+                      <span className={`pill ${(c.category_type || "capex") === "opex" ? "amber" : "blue"}`}>
+                        {(c.category_type || "capex").toUpperCase()}
+                      </span>
+                    </td>
                     <td style={{ color: "var(--muted)" }}>{c.description || "—"}</td>
                     <td><span className={`pill ${c.is_active ? "green" : "grey"}`}>{c.is_active ? "Active" : "Inactive"}</span></td>
                     {isAdmin && (
@@ -150,6 +155,15 @@ export default function MastersPage() {
             <Field label="Name *"><input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
             {edit.kind === "category" ? (
               <>
+                <Field label="Category Type *">
+                  <select
+                    value={edit.category_type || "capex"}
+                    onChange={(e) => setEdit({ ...edit, category_type: e.target.value })}
+                  >
+                    <option value="capex">CapEx (Capital Expenditure)</option>
+                    <option value="opex">OpEx (Operating Expenditure)</option>
+                  </select>
+                </Field>
                 <Field label="Description"><input value={edit.description || ""} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
                 <Field label="Sort order"><input type="number" value={edit.sort_order} onChange={(e) => setEdit({ ...edit, sort_order: e.target.value })} /></Field>
               </>

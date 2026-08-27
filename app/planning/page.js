@@ -76,7 +76,7 @@ export default function PlanningPage() {
         const suggested = Math.max(committed, Math.round((lastActual * (1 + uplift / 100)) / 500) * 500);
         if (!lastActual && !committed && !Number(cy.budget_amount || 0) && !planMap.get(key)) return;
         out.push({
-          key, category_id: c.id, name: c.name, scope,
+          key, category_id: c.id, name: c.name, category_type: c.category_type || "capex", scope,
           prevActual: Number(py.consumed || 0),
           curBudget: Number(cy.budget_amount || 0),
           curActual: lastActual,
@@ -146,7 +146,7 @@ export default function PlanningPage() {
 
   function exportCsv() {
     csvDownload(`budget-proposal-${planYear}.csv`, rows.map((r) => ({
-      plan_year: planYear, category: r.name, scope: r.scope,
+      plan_year: planYear, category: r.name, type: (r.category_type || "capex").toUpperCase(), scope: r.scope,
       actual_prev: r.prevActual, budget_last: r.curBudget, actual_last: r.curActual,
       committed_renewals: r.committed, suggested: r.suggested, proposed: Number(draft[r.key] || 0),
       remarks: draftNotes[r.key] || r.existing?.notes || "",
@@ -215,7 +215,12 @@ export default function PlanningPage() {
                   const delta = proposed - r.curBudget;
                   return (
                     <tr key={r.key}>
-                      <td style={{ fontWeight: 600 }}>{r.name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <div>{r.name}</div>
+                        <span className={`pill ${(r.category_type || "capex") === "opex" ? "amber" : "blue"}`} style={{ fontSize: 9, padding: "1px 5px", marginTop: 2 }}>
+                          {(r.category_type || "capex").toUpperCase()}
+                        </span>
+                      </td>
                       <td><span className={`pill ${r.scope === "global" ? "blue" : "grey"}`}>{r.scope === "global" ? "Global" : "Local"}</span></td>
                       <td className="num mono" style={{ color: "var(--faint)" }}>{money(r.prevActual)}</td>
                       <td className="num mono">{money(r.curBudget)}</td>
