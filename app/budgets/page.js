@@ -41,16 +41,19 @@ export default function BudgetsPage() {
     let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
     let budgetQuery = supabase.from("it_budgets").select("*").eq("budget_year", year);
     let assetQuery = supabase.from("it_assets").select("line_total,scope,category_id,department,remarks,it_categories(name)").eq("budget_year", year);
+    let verQuery = supabase.from("it_budget_versions").select("*").eq("budget_year", year).order("version_number", { ascending: false });
 
     if (dept && dept !== "All") {
       if (dept === "IT") {
         catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
         budgetQuery = budgetQuery.or("budget_department.eq.IT,budget_department.is.null");
         assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
+        verQuery = verQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
         catQuery = catQuery.eq("budget_department", dept);
         budgetQuery = budgetQuery.eq("budget_department", dept);
         assetQuery = assetQuery.eq("budget_department", dept);
+        verQuery = verQuery.eq("budget_department", dept);
       }
     }
 
@@ -58,7 +61,7 @@ export default function BudgetsPage() {
       catQuery,
       budgetQuery,
       assetQuery,
-      supabase.from("it_budget_versions").select("*").eq("budget_year", year).order("version_number", { ascending: false }),
+      verQuery,
     ]);
 
     const cats = c.data || [];
@@ -226,6 +229,7 @@ export default function BudgetsPage() {
         change_summary: summaryText,
         snapshot_data: snapshotItems,
         created_by: profile?.full_name || profile?.email || "Admin",
+        budget_department: targetDept,
       }).select();
 
       if (verErr) {

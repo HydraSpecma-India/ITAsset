@@ -120,6 +120,9 @@ export default function Shell({ title, subtitle, actions, children }) {
         })}
 
         <div style={{ flex: 1 }} />
+        <Link href="/change-password" className="nav-item" style={{ width: "100%", marginBottom: 4 }}>
+          <span className="nav-ico">🔑</span> Change Password
+        </Link>
         <button className="nav-item" onClick={signOut} style={{ width: "100%" }}>
           <span className="nav-ico">⏻</span> Sign out
         </button>
@@ -165,6 +168,9 @@ export default function Shell({ title, subtitle, actions, children }) {
             <button className="btn ghost sm" onClick={toggleTheme} title="Toggle Dark/Light Mode" style={{ borderRadius: 20, padding: "4px 12px" }}>
               {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
             </button>
+            <Link href="/change-password" className="btn ghost sm" style={{ borderRadius: 20, padding: "4px 12px", fontSize: 12 }} title="Change My Password">
+              🔑 Password
+            </Link>
             <span className={`pill ${isAdmin ? "gold" : isGlobalReader ? "amber" : "blue"}`}>
               {roleBadgeText}
             </span>

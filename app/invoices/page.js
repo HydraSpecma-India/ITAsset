@@ -1519,10 +1519,63 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
     }
   }
 
+  function downloadImportTemplate() {
+    const templateData = [
+      {
+        "Invoice No": "INV-2026-001",
+        "Invoice Date": "2026-01-15",
+        "Vendor Name": "Dell India Pvt Ltd",
+        "PO Number": "PO-99102",
+        "Asset Name": "Dell Latitude 5540 Laptop",
+        "Category Name": "Laptops",
+        "Item Type": "hardware",
+        "Scope": "local",
+        "Quantity": 1,
+        "Unit Cost": 85000,
+        "Tax Amount": 15300,
+        "Staff Name": "Manigandan",
+        "Warranty End Date": "2029-01-15",
+        "License End Date": "",
+        "AMC End Date": "",
+        "Replacement Due Date": "2029-01-15",
+        "Remarks": "Sample row"
+      },
+      {
+        "Invoice No": "INV-2026-002",
+        "Invoice Date": "2026-02-01",
+        "Vendor Name": "Microsoft Corporation",
+        "PO Number": "PO-99105",
+        "Asset Name": "Microsoft 365 E5 License",
+        "Category Name": "Software Licenses",
+        "Item Type": "software",
+        "Scope": "global",
+        "Quantity": 10,
+        "Unit Cost": 12000,
+        "Tax Amount": 21600,
+        "Staff Name": "",
+        "Warranty End Date": "",
+        "License End Date": "2027-02-01",
+        "AMC End Date": "",
+        "Replacement Due Date": "",
+        "Remarks": "Annual subscription"
+      }
+    ];
+    csvDownload("Invoice_Asset_Import_Template.csv", templateData);
+  }
+
   return (
     <Modal wide title="Import Invoices & Assets from PDF / Excel / CSV" onClose={onClose}>
       {err && <div className="alert err">{err}</div>}
       {statusMsg && <div className="alert ok">{statusMsg}</div>}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <span style={{ fontSize: 13, color: "var(--muted)" }}>
+          Supported file formats: <strong>PDF</strong>, <strong>CSV</strong>, <strong>XLSX</strong>
+        </span>
+        <button className="btn ghost sm" onClick={downloadImportTemplate} style={{ color: "var(--gold)", borderColor: "rgba(255,204,0,0.4)" }}>
+          📥 Download Excel / CSV Import Template
+        </button>
+      </div>
 
       <div
         className="card"
