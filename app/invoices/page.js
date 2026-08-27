@@ -248,7 +248,7 @@ export default function InvoicesPage() {
   return (
     <Shell
       title="Invoices"
-      subtitle="Every IT purchase invoice with its asset lines"
+      subtitle={`Every ${dept === "All" ? "Department" : dept} purchase invoice with its asset lines`}
       actions={
         <>
           {selectedInvIds.size > 0 && isAdmin && (

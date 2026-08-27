@@ -385,8 +385,8 @@ export default function AssetsPage() {
 
   return (
     <Shell
-      title={isEmployee ? "My Assigned Assets" : "Asset Register"}
-      subtitle={isEmployee ? `Assigned IT equipment details for ${profile?.full_name || "Employee"}` : "Every purchased item with cost, owner and expiry dates"}
+      title="Asset Register"
+      subtitle={`Complete ${dept === "All" ? "Department" : dept} asset inventory with scope, user and budget tracking`}
       actions={
         <div style={{ display: "flex", gap: 10 }}>
           {isAdmin && (

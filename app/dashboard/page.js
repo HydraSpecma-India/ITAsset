@@ -213,18 +213,19 @@ export default function DashboardPage() {
   }, [activeItems]);
 
   const handleKpiClick = (type) => {
+    const deptPrefix = dept === "All" ? "All Departments" : dept;
     if (type === "budget") {
-      setActiveSelection({ title: `IT Budget Allocation (${year})`, filterKey: "all" });
+      setActiveSelection({ title: `${deptPrefix} Budget Allocation (${year})`, filterKey: "all" });
     } else if (type === "consumed") {
-      setActiveSelection({ title: `IT Consumed Purchases (${year})`, filterKey: "it_only" });
+      setActiveSelection({ title: `${deptPrefix} Consumed Purchases (${year})`, filterKey: "it_only" });
     } else if (type === "balance") {
-      setActiveSelection({ title: `Active IT Assets (${year})`, filterKey: "it_only" });
+      setActiveSelection({ title: `Active ${deptPrefix} Assets (${year})`, filterKey: "it_only" });
     } else if (type === "capex") {
-      setActiveSelection({ title: `📦 CapEx IT Purchases (${year})`, filterKey: "capex" });
+      setActiveSelection({ title: `📦 CapEx ${deptPrefix} Purchases (${year})`, filterKey: "capex" });
     } else if (type === "opex") {
-      setActiveSelection({ title: `🔄 OpEx IT Purchases (${year})`, filterKey: "opex" });
+      setActiveSelection({ title: `🔄 OpEx ${deptPrefix} Purchases (${year})`, filterKey: "opex" });
     } else if (type === "expiry") {
-      setActiveSelection({ title: `Upcoming Expiries & Renewals`, filterKey: "expiry" });
+      setActiveSelection({ title: `Upcoming ${deptPrefix} Expiries & Renewals`, filterKey: "expiry" });
     }
   };
 
@@ -240,7 +241,7 @@ export default function DashboardPage() {
 
   const handleScopeClick = (scopeKey) => {
     const scopeLabel = scopeKey === "global" ? "Global" : "Local";
-    setActiveSelection({ title: `${scopeLabel} Staff IT Purchases (${year})`, filterKey: "scope", filterVal: scopeKey });
+    setActiveSelection({ title: `${scopeLabel} Staff Purchases (${year})`, filterKey: "scope", filterVal: scopeKey });
   };
 
   const exportDrilldownCsv = (title, items) => {
@@ -252,7 +253,7 @@ export default function DashboardPage() {
       "Vendor Name": r.it_invoices?.it_vendors?.name || "",
       "Category": r.it_categories?.name || r.category_name || "",
       "Scope": r.scope === "global" ? "Global" : "Local",
-      "Included in IT Budget?": isIncludedInBudget(r) ? "Yes (IT Budget)" : "No (Admin/Dept)",
+      "Budget Dept": r.budget_department || "IT",
       "Quantity": r.quantity || 1,
       "Unit Cost": r.unit_cost || r.line_total || 0,
       "Line Total": r.line_total || (Number(r.quantity || 1) * Number(r.unit_cost || 0)),
@@ -264,7 +265,7 @@ export default function DashboardPage() {
   return (
     <Shell
       title="Dashboard"
-      subtitle={`IT purchase and budget position · calendar year ${year}`}
+      subtitle={`${dept === "All" ? "All Departments" : dept} purchase and budget position · calendar year ${year}`}
       actions={
         <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 110 }}>
           {years.map((y) => <option key={y} value={y}>{y}</option>)}

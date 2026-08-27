@@ -286,7 +286,7 @@ export default function PlanningPage() {
   return (
     <Shell
       title="Next Year Budget"
-      subtitle="Build the proposal from actual consumption plus committed renewals and replacements"
+      subtitle={`${dept === "All" ? "All Departments" : dept} budget proposal built from actual consumption plus committed renewals`}
       actions={
         <>
           <select value={planYear} onChange={(e) => setPlanYear(Number(e.target.value))} style={{ width: 110 }}>

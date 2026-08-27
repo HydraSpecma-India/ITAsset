@@ -429,7 +429,7 @@ export default function BudgetsPage() {
   return (
     <Shell
       title="Budget vs Actual"
-      subtitle="Category-wise budget split by local and global staff with CapEx / OpEx & version history"
+      subtitle={`${dept === "All" ? "All Departments" : dept} category-wise budget split by local and global staff with CapEx / OpEx & version history`}
       actions={
         <>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ width: 110 }}>
