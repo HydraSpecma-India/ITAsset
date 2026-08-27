@@ -39,8 +39,8 @@ export default function DashboardPage() {
     setLoading(true);
     (async () => {
       const [s, a, e] = await Promise.all([
-        supabase.from("v_it_budget_summary").select("*").eq("budget_year", year),
-        supabase.from("it_assets").select("*, it_categories(id,name,sort_order), it_invoices(invoice_no, it_vendors(name))").eq("budget_year", year),
+        supabase.from("it_budgets").select("*, it_categories(id,name,category_type,sort_order)").eq("budget_year", year),
+        supabase.from("it_assets").select("*, it_categories(id,name,category_type,sort_order), it_invoices(invoice_no, it_vendors(name))").eq("budget_year", year),
         supabase.from("v_it_expiry_alerts").select("*"),
       ]);
       setSummary(s.data || []);
@@ -60,11 +60,12 @@ export default function DashboardPage() {
       local: { b: 0, c: 0 }, global: { b: 0, c: 0 }
     };
     summary.forEach((r) => {
-      const bAmt = Number(r.budget_amount);
+      const bAmt = Number(r.amount || 0);
       t.budget += bAmt;
       const k = r.scope === "global" ? "global" : "local";
       t[k].b += bAmt;
-      if ((r.category_type || "capex") === "opex") {
+      const catType = r.it_categories?.category_type || "capex";
+      if (catType === "opex") {
         t.opexBudget += bAmt;
       } else {
         t.capexBudget += bAmt;
@@ -72,11 +73,12 @@ export default function DashboardPage() {
     });
 
     itAssets.forEach((a) => {
-      const val = Number(a.line_total);
+      const val = Number(a.line_total || 0);
       t.consumed += val;
       const k = a.scope === "global" ? "global" : "local";
       t[k].c += val;
-      if ((a.it_categories?.category_type || "capex") === "opex") {
+      const catType = a.it_categories?.category_type || "capex";
+      if (catType === "opex") {
         t.opexConsumed += val;
       } else {
         t.capexConsumed += val;
@@ -91,16 +93,16 @@ export default function DashboardPage() {
   const byCategory = useMemo(() => {
     const m = new Map();
     summary.forEach((r) => {
-      const k = r.category_name;
-      const c = m.get(k) || { label: k, budget: 0, consumed: 0, sort: r.sort_order };
-      c.budget += Number(r.budget_amount);
+      const k = r.it_categories?.name || "Others";
+      const c = m.get(k) || { label: k, budget: 0, consumed: 0, sort: r.it_categories?.sort_order || 999 };
+      c.budget += Number(r.amount || 0);
       m.set(k, c);
     });
 
     itAssets.forEach((a) => {
       const k = a.it_categories?.name || "Others";
       const c = m.get(k) || { label: k, budget: 0, consumed: 0, sort: a.it_categories?.sort_order || 999 };
-      c.consumed += Number(a.line_total);
+      c.consumed += Number(a.line_total || 0);
       m.set(k, c);
     });
 
