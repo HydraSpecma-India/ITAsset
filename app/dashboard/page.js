@@ -22,6 +22,7 @@ function isIncludedInBudget(a) {
 }
 
 export default function DashboardPage() {
+  const { profile } = useAuth();
   const { dept } = useDept();
   const [year, setYear] = useState(currentYear());
   const [summary, setSummary] = useState([]);
