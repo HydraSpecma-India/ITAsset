@@ -5,6 +5,7 @@ import Shell from "@/components/Shell";
 import { Card, Field, Modal, Empty } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
 import { money, dateStr, todayISO, SCOPES, ITEM_TYPES, ASSET_STATUS, csvDownload } from "@/lib/format";
 
 const blankLine = () => ({
