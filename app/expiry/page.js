@@ -25,22 +25,33 @@ export default function ExpiryPage() {
   const [win, setWin] = useState("90");
   const [q, setQ] = useState("");
 
+  const { profile } = useAuth();
+
   useEffect(() => {
+    if (!profile) return;
+
+    const isGlobalUser =
+      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
+      profile?.role === "global_reader" ||
+      profile?.role === "viewer";
+
+    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+
     setLoading(true);
     (async () => {
       let query = supabase.from("v_it_expiry_alerts").select("*").order("expiry_date");
-      if (dept && dept !== "All") {
-        if (dept === "IT") {
+      if (activeDept && activeDept !== "All") {
+        if (activeDept === "IT") {
           query = query.or("budget_department.eq.IT,budget_department.is.null");
         } else {
-          query = query.eq("budget_department", dept);
+          query = query.eq("budget_department", activeDept);
         }
       }
       const { data } = await query;
       setRows((data || []).map((r) => ({ ...r, days: daysUntil(r.expiry_date) })));
       setLoading(false);
     })();
-  }, [dept]);
+  }, [dept, profile]);
 
   const counts = useMemo(() => ({
     expired: rows.filter((r) => r.days < 0).length,

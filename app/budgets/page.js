@@ -37,23 +37,32 @@ export default function BudgetsPage() {
   const [msg, setMsg] = useState(null);
 
   const load = useCallback(async () => {
+    if (!profile) return;
+
+    const isGlobalUser =
+      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
+      profile?.role === "global_reader" ||
+      profile?.role === "viewer";
+
+    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+
     setLoading(true);
     let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
     let budgetQuery = supabase.from("it_budgets").select("*").eq("budget_year", year);
     let assetQuery = supabase.from("it_assets").select("line_total,scope,category_id,department,remarks,it_categories(name)").eq("budget_year", year);
     let verQuery = supabase.from("it_budget_versions").select("*").eq("budget_year", year).order("version_number", { ascending: false });
 
-    if (dept && dept !== "All") {
-      if (dept === "IT") {
+    if (activeDept && activeDept !== "All") {
+      if (activeDept === "IT") {
         budgetQuery = budgetQuery.or("budget_department.eq.IT,budget_department.is.null");
         assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
         verQuery = verQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        budgetQuery = budgetQuery.eq("budget_department", dept);
-        assetQuery = assetQuery.eq("budget_department", dept);
-        verQuery = verQuery.eq("budget_department", dept);
+        budgetQuery = budgetQuery.eq("budget_department", activeDept);
+        assetQuery = assetQuery.eq("budget_department", activeDept);
+        verQuery = verQuery.eq("budget_department", activeDept);
       }
-      catQuery = catQuery.or(`budget_department.eq.${dept},budget_department.is.null`);
+      catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
     }
 
     const [c, s, a, v] = await Promise.all([
@@ -83,7 +92,7 @@ export default function BudgetsPage() {
         });
       });
 
-      const targetDept = dept === "All" ? "IT" : dept;
+      const snapDept = activeDept === "All" ? "IT" : activeDept;
       const { data: createdVer } = await supabase.from("it_budget_versions").insert({
         budget_year: year,
         version_number: 1,
@@ -91,7 +100,7 @@ export default function BudgetsPage() {
         change_summary: `Initial budget snapshot for ${year}`,
         snapshot_data: initSnap,
         created_by: "System / Admin",
-        budget_department: targetDept,
+        budget_department: snapDept,
       }).select();
 
       if (createdVer && createdVer.length > 0) {
@@ -117,9 +126,11 @@ export default function BudgetsPage() {
     setDraft(d);
     setDraftNotes(dn);
     setLoading(false);
-  }, [year, dept]);
+  }, [year, dept, profile]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (profile) load();
+  }, [profile, load]);
 
   const view = useMemo(() => {
     const budgetMap = new Map();

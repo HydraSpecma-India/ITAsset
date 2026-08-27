@@ -39,21 +39,30 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!profile) return;
+
+    const isGlobalUser =
+      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
+      profile?.role === "global_reader" ||
+      profile?.role === "viewer";
+
+    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+
     setLoading(true);
     (async () => {
       let bQuery = supabase.from("it_budgets").select("*, it_categories(id,name,category_type,sort_order)").eq("budget_year", year);
       let aQuery = supabase.from("it_assets").select("*, it_categories(id,name,category_type,sort_order), it_invoices(invoice_no, it_vendors(name))").eq("budget_year", year);
       let eQuery = supabase.from("v_it_expiry_alerts").select("*");
 
-      if (dept && dept !== "All") {
-        if (dept === "IT") {
+      if (activeDept && activeDept !== "All") {
+        if (activeDept === "IT") {
           bQuery = bQuery.or("budget_department.eq.IT,budget_department.is.null");
           aQuery = aQuery.or("budget_department.eq.IT,budget_department.is.null");
           eQuery = eQuery.or("budget_department.eq.IT,budget_department.is.null");
         } else {
-          bQuery = bQuery.eq("budget_department", dept);
-          aQuery = aQuery.eq("budget_department", dept);
-          eQuery = eQuery.eq("budget_department", dept);
+          bQuery = bQuery.eq("budget_department", activeDept);
+          aQuery = aQuery.eq("budget_department", activeDept);
+          eQuery = eQuery.eq("budget_department", activeDept);
         }
       }
 
@@ -67,7 +76,7 @@ export default function DashboardPage() {
       setAlerts(e.data || []);
       setLoading(false);
     })();
-  }, [year, dept]);
+  }, [year, dept, profile]);
 
   const itAssets = useMemo(() => assets.filter((a) => isIncludedInBudget(a)), [assets]);
 

@@ -56,20 +56,29 @@ export default function InvoicesPage() {
   const [selectedInvIds, setSelectedInvIds] = useState(new Set());
 
   const load = useCallback(async () => {
+    if (!profile) return;
+
+    const isGlobalUser =
+      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
+      profile?.role === "global_reader" ||
+      profile?.role === "viewer";
+
+    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+
     setLoading(true);
     let invQuery = supabase.from("v_it_invoice_totals").select("*").order("invoice_date", { ascending: false });
     let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
     let venQuery = supabase.from("it_vendors").select("*").eq("is_active", true).order("name");
 
-    if (dept && dept !== "All") {
-      if (dept === "IT") {
+    if (activeDept && activeDept !== "All") {
+      if (activeDept === "IT") {
         invQuery = invQuery.or("budget_department.eq.IT,budget_department.is.null");
         catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
         venQuery = venQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        invQuery = invQuery.eq("budget_department", dept);
-        catQuery = catQuery.eq("budget_department", dept);
-        venQuery = venQuery.eq("budget_department", dept);
+        invQuery = invQuery.eq("budget_department", activeDept);
+        catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
+        venQuery = venQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
       }
     }
 
@@ -87,9 +96,11 @@ export default function InvoicesPage() {
     setDepartments(deptData.data || []);
     setSelectedInvIds(new Set());
     setLoading(false);
-  }, [dept]);
+  }, [dept, profile]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (profile) load();
+  }, [profile, load]);
 
   const sanitizedInvoices = useMemo(() => {
     const s = q.trim().toLowerCase();

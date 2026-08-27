@@ -25,20 +25,29 @@ export default function PlanningPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
+    if (!profile) return;
+
+    const isGlobalUser =
+      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
+      profile?.role === "global_reader" ||
+      profile?.role === "viewer";
+
+    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+
     setLoading(true);
     let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
     let planQuery = supabase.from("it_plan_lines").select("*").eq("plan_year", planYear);
     let assetQuery = supabase.from("it_assets").select("category_id,scope,line_total,department,license_end,amc_end,replacement_due,status");
 
-    if (dept && dept !== "All") {
-      if (dept === "IT") {
+    if (activeDept && activeDept !== "All") {
+      if (activeDept === "IT") {
         catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
         planQuery = planQuery.or("budget_department.eq.IT,budget_department.is.null");
         assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        catQuery = catQuery.eq("budget_department", dept);
-        planQuery = planQuery.eq("budget_department", dept);
-        assetQuery = assetQuery.eq("budget_department", dept);
+        catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
+        planQuery = planQuery.eq("budget_department", activeDept);
+        assetQuery = assetQuery.eq("budget_department", activeDept);
       }
     }
 
@@ -61,9 +70,11 @@ export default function PlanningPage() {
     setDraft(d);
     setDraftNotes(dn);
     setLoading(false);
-  }, [planYear, dept]);
+  }, [planYear, dept, profile]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (profile) load();
+  }, [profile, load]);
 
   const commitments = useMemo(() => {
     const m = new Map();

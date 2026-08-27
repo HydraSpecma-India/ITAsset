@@ -35,19 +35,28 @@ export default function AssetsPage() {
   const [bulkSaving, setBulkSaving] = useState(false);
 
   const load = useCallback(async () => {
+    if (!profile) return;
+
+    const isGlobalUser =
+      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
+      profile?.role === "global_reader" ||
+      profile?.role === "viewer";
+
+    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+
     setLoading(true);
     let assetQuery = supabase.from("it_assets")
         .select("*, it_categories(name, category_type), it_invoices(invoice_no, invoice_date, it_vendors(name))")
         .order("purchase_date", { ascending: false });
     let catQuery = supabase.from("it_categories").select("*").order("sort_order");
 
-    if (dept && dept !== "All") {
-      if (dept === "IT") {
-        assetQuery = assetQuery.or("department.eq.IT,department.is.null");
-        catQuery = catQuery.or("department.eq.IT,department.is.null");
+    if (activeDept && activeDept !== "All") {
+      if (activeDept === "IT") {
+        assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
+        catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        assetQuery = assetQuery.eq("department", dept);
-        catQuery = catQuery.eq("department", dept);
+        assetQuery = assetQuery.eq("budget_department", activeDept);
+        catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
       }
     }
 
@@ -62,9 +71,11 @@ export default function AssetsPage() {
     setEmployees(emp.data || []);
     setDepartments(deptData.data || []);
     setLoading(false);
-  }, [dept]);
+  }, [dept, profile]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (profile) load();
+  }, [profile, load]);
 
   const years = useMemo(() => [...new Set(rows.map((r) => r.budget_year))].sort((a, b) => b - a), [rows]);
 

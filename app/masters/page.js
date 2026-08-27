@@ -20,17 +20,26 @@ export default function MastersPage() {
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
+    if (!profile) return;
+
+    const isGlobalUser =
+      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
+      profile?.role === "global_reader" ||
+      profile?.role === "viewer";
+
+    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+
     setLoading(true);
     let cQuery = supabase.from("it_categories").select("*").order("sort_order");
     let vQuery = supabase.from("it_vendors").select("*").order("name");
 
-    if (dept && dept !== "All") {
-      if (dept === "IT") {
-        cQuery = cQuery.or("department.eq.IT,department.is.null");
-        vQuery = vQuery.or("department.eq.IT,department.is.null");
+    if (activeDept && activeDept !== "All") {
+      if (activeDept === "IT") {
+        cQuery = cQuery.or("budget_department.eq.IT,budget_department.is.null");
+        vQuery = vQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        cQuery = cQuery.eq("department", dept);
-        vQuery = vQuery.eq("department", dept);
+        cQuery = cQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
+        vQuery = vQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
       }
     }
 
@@ -38,9 +47,11 @@ export default function MastersPage() {
     setCategories(c.data || []);
     setVendors(v.data || []);
     setLoading(false);
-  }, [dept]);
+  }, [dept, profile]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (profile) load();
+  }, [profile, load]);
 
   async function save() {
     setErr("");
