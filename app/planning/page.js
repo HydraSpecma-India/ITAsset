@@ -88,14 +88,38 @@ export default function PlanningPage() {
     return out;
   }, [categories, summary, plan, commitments, planYear, uplift]);
 
+  const capexRows = useMemo(() => rows.filter((r) => (r.category_type || "capex") !== "opex"), [rows]);
+  const opexRows = useMemo(() => rows.filter((r) => (r.category_type || "capex") === "opex"), [rows]);
+
   const totals = useMemo(() => {
-    const t = { curBudget: 0, curActual: 0, committed: 0, suggested: 0, planned: 0 };
+    const t = {
+      curBudget: 0, curActual: 0, committed: 0, suggested: 0, planned: 0,
+      capexCurBudget: 0, capexCurActual: 0, capexPlanned: 0, capexSuggested: 0, capexCommitted: 0, capexPrevActual: 0,
+      opexCurBudget: 0, opexCurActual: 0, opexPlanned: 0, opexSuggested: 0, opexCommitted: 0, opexPrevActual: 0,
+    };
     rows.forEach((r) => {
+      const planAmt = Number(draft[r.key] || 0);
       t.curBudget += r.curBudget;
       t.curActual += r.curActual;
       t.committed += r.committed;
       t.suggested += r.suggested;
-      t.planned += Number(draft[r.key] || 0);
+      t.planned += planAmt;
+
+      if ((r.category_type || "capex") === "opex") {
+        t.opexCurBudget += r.curBudget;
+        t.opexCurActual += r.curActual;
+        t.opexPlanned += planAmt;
+        t.opexSuggested += r.suggested;
+        t.opexCommitted += r.committed;
+        t.opexPrevActual += r.prevActual;
+      } else {
+        t.capexCurBudget += r.curBudget;
+        t.capexCurActual += r.curActual;
+        t.capexPlanned += planAmt;
+        t.capexSuggested += r.suggested;
+        t.capexCommitted += r.committed;
+        t.capexPrevActual += r.prevActual;
+      }
     });
     return t;
   }, [rows, draft]);
@@ -153,6 +177,90 @@ export default function PlanningPage() {
     })));
   }
 
+  const renderTableSection = (sectionRows, sectionTotals, title, typeBadge) => (
+    <Card
+      title={`${typeBadge} ${title} for ${planYear}`}
+      hint="Suggested = prior-year actual + uplift, floored at committed renewals"
+    >
+      {sectionRows.length === 0 ? (
+        <Empty>No items recorded in this category type.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th><th>Scope</th>
+                <th className="num">{planYear - 2} actual</th>
+                <th className="num">{planYear - 1} budget</th>
+                <th className="num">{planYear - 1} actual</th>
+                <th className="num">Committed {planYear}</th>
+                <th className="num">Suggested</th>
+                <th className="num">Proposed {planYear}</th>
+                <th className="num">vs last budget</th>
+                <th>Remarks / Justification</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sectionRows.map((r) => {
+                const proposed = Number(draft[r.key] || 0);
+                const delta = proposed - r.curBudget;
+                return (
+                  <tr key={r.key}>
+                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                    <td><span className={`pill ${r.scope === "global" ? "blue" : "grey"}`}>{r.scope === "global" ? "Global" : "Local"}</span></td>
+                    <td className="num mono" style={{ color: "var(--faint)" }}>{money(r.prevActual)}</td>
+                    <td className="num mono">{money(r.curBudget)}</td>
+                    <td className="num mono">{money(r.curActual)}</td>
+                    <td className="num mono" style={{ color: r.committed ? "var(--amber)" : "var(--faint)" }}>{money(r.committed)}</td>
+                    <td className="num mono" style={{ color: "var(--muted)" }}>{money(r.suggested)}</td>
+                    <td className="num" style={{ minWidth: 120 }}>
+                      {isAdmin ? (
+                        <input type="number" step="500" className="mono" style={{ textAlign: "right", padding: "6px 8px" }}
+                          value={draft[r.key] ?? ""} placeholder="0"
+                          onChange={(e) => setDraft({ ...draft, [r.key]: e.target.value })} />
+                      ) : money(proposed)}
+                    </td>
+                    <td className="num mono" style={{ color: delta > 0 ? "var(--amber)" : delta < 0 ? "var(--green)" : "var(--faint)" }}>
+                      {delta === 0 ? "—" : `${delta > 0 ? "+" : ""}${moneyShort(delta)}`}
+                    </td>
+                    <td style={{ minWidth: 180 }}>
+                      {isAdmin ? (
+                        <input
+                          type="text"
+                          style={{ padding: "4px 8px", fontSize: 12, width: "100%" }}
+                          value={draftNotes[r.key] ?? ""}
+                          placeholder="Why added / justification…"
+                          onChange={(e) => setDraftNotes({ ...draftNotes, [r.key]: e.target.value })}
+                        />
+                      ) : (
+                        <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                          {draftNotes[r.key] || r.existing?.notes || "—"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="2">Subtotal</td>
+                <td className="num mono">{money(sectionTotals.prevActual)}</td>
+                <td className="num mono">{money(sectionTotals.curBudget)}</td>
+                <td className="num mono">{money(sectionTotals.curActual)}</td>
+                <td className="num mono">{money(sectionTotals.committed)}</td>
+                <td className="num mono">{money(sectionTotals.suggested)}</td>
+                <td className="num mono" style={{ color: "var(--gold-soft)" }}>{money(sectionTotals.planned)}</td>
+                <td className="num mono">{moneyShort(sectionTotals.planned - sectionTotals.curBudget)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+
   return (
     <Shell
       title="Next Year Budget"
@@ -170,111 +278,51 @@ export default function PlanningPage() {
       {msg && <div className={`alert ${msg.t}`}>{msg.m}</div>}
       {!isAdmin && <div className="alert info">Read-only view of the proposal prepared by IT.</div>}
 
-      <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Kpi label={`${planYear - 1} budget`} value={money(totals.curBudget)} />
-        <Kpi label={`${planYear - 1} actual`} value={money(totals.curActual)} foot={totals.curBudget ? `${((totals.curActual / totals.curBudget) * 100).toFixed(0)}% utilised` : ""} />
-        <Kpi label={`Committed in ${planYear}`} value={money(totals.committed)} foot="Renewals, AMC and replacements already dated" tone="warn" />
-        <Kpi label={`Proposed ${planYear}`} value={money(totals.planned)} foot={`Suggested ${moneyShort(totals.suggested)}`} tone="gold" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 16 }}>
+        <div style={{ padding: 14, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--blue)", textTransform: "uppercase" }}>CapEx Proposed {planYear}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }} className="mono">{money(totals.capexPlanned)}</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>Suggested: {moneyShort(totals.capexSuggested)}</div>
+        </div>
+        <div style={{ padding: 14, background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--amber)", textTransform: "uppercase" }}>OpEx Proposed {planYear}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4 }} className="mono">{money(totals.opexPlanned)}</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>Suggested: {moneyShort(totals.opexSuggested)}</div>
+        </div>
+        <div style={{ padding: 14, background: "rgba(234,179,8,0.12)", border: "1px solid var(--gold)", borderRadius: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase" }}>Total Proposed {planYear}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: "var(--gold)" }} className="mono">{money(totals.planned)}</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>Last Budget: {moneyShort(totals.curBudget)}</div>
+        </div>
       </div>
 
-      <Card
-        title={`Proposal for ${planYear}`}
-        hint="Suggested = prior-year actual + uplift, never below committed renewals"
-        actions={
-          isAdmin && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: 11.5, color: "var(--faint)" }}>Uplift %</span>
-              <input type="number" value={uplift} onChange={(e) => setUplift(Number(e.target.value))} style={{ width: 70, padding: "5px 8px" }} />
-              <button className="btn ghost sm" onClick={autofill}>Auto-fill</button>
-              <button className="btn ghost sm" onClick={promote}>Approve → budget</button>
-            </div>
-          )
-        }
-      >
-        {loading ? <div className="loading">Loading…</div> : rows.length === 0 ? (
-          <Empty>No history yet. Record some invoices or set a budget first.</Empty>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Category</th><th>Scope</th>
-                  <th className="num">{planYear - 2} actual</th>
-                  <th className="num">{planYear - 1} budget</th>
-                  <th className="num">{planYear - 1} actual</th>
-                  <th className="num">Committed {planYear}</th>
-                  <th className="num">Suggested</th>
-                  <th className="num">Proposed {planYear}</th>
-                  <th className="num">vs last budget</th>
-                  <th>Remarks / Justification</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const proposed = Number(draft[r.key] || 0);
-                  const delta = proposed - r.curBudget;
-                  return (
-                    <tr key={r.key}>
-                      <td style={{ fontWeight: 600 }}>
-                        <div>{r.name}</div>
-                        <span className={`pill ${(r.category_type || "capex") === "opex" ? "amber" : "blue"}`} style={{ fontSize: 9, padding: "1px 5px", marginTop: 2 }}>
-                          {(r.category_type || "capex").toUpperCase()}
-                        </span>
-                      </td>
-                      <td><span className={`pill ${r.scope === "global" ? "blue" : "grey"}`}>{r.scope === "global" ? "Global" : "Local"}</span></td>
-                      <td className="num mono" style={{ color: "var(--faint)" }}>{money(r.prevActual)}</td>
-                      <td className="num mono">{money(r.curBudget)}</td>
-                      <td className="num mono">{money(r.curActual)}</td>
-                      <td className="num mono" style={{ color: r.committed ? "var(--amber)" : "var(--faint)" }}>{money(r.committed)}</td>
-                      <td className="num mono" style={{ color: "var(--muted)" }}>{money(r.suggested)}</td>
-                      <td className="num" style={{ minWidth: 120 }}>
-                        {isAdmin ? (
-                          <input type="number" step="500" className="mono" style={{ textAlign: "right", padding: "6px 8px" }}
-                            value={draft[r.key] ?? ""} placeholder="0"
-                            onChange={(e) => setDraft({ ...draft, [r.key]: e.target.value })} />
-                        ) : money(proposed)}
-                      </td>
-                      <td className="num mono" style={{ color: delta > 0 ? "var(--amber)" : delta < 0 ? "var(--green)" : "var(--faint)" }}>
-                        {delta === 0 ? "—" : `${delta > 0 ? "+" : ""}${moneyShort(delta)}`}
-                      </td>
-                      <td style={{ minWidth: 180 }}>
-                        {isAdmin ? (
-                          <input
-                            type="text"
-                            style={{ padding: "4px 8px", fontSize: 12, width: "100%" }}
-                            value={draftNotes[r.key] ?? ""}
-                            placeholder="Why added / justification…"
-                            onChange={(e) => setDraftNotes({ ...draftNotes, [r.key]: e.target.value })}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                            {draftNotes[r.key] || r.existing?.notes || "—"}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan="2">Total</td>
-                  <td className="num mono">{money(rows.reduce((a, r) => a + r.prevActual, 0))}</td>
-                  <td className="num mono">{money(totals.curBudget)}</td>
-                  <td className="num mono">{money(totals.curActual)}</td>
-                  <td className="num mono">{money(totals.committed)}</td>
-                  <td className="num mono">{money(totals.suggested)}</td>
-                  <td className="num mono" style={{ color: "var(--gold-soft)" }}>{money(totals.planned)}</td>
-                  <td className="num mono">{moneyShort(totals.planned - totals.curBudget)}</td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>Budget Proposal Breakdown by Category</h3>
+        {isAdmin && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 11.5, color: "var(--faint)" }}>Uplift %</span>
+            <input type="number" value={uplift} onChange={(e) => setUplift(Number(e.target.value))} style={{ width: 70, padding: "5px 8px" }} />
+            <button className="btn ghost sm" onClick={autofill}>Auto-fill</button>
+            <button className="btn ghost sm" onClick={promote}>Approve → budget</button>
           </div>
         )}
-      </Card>
+      </div>
 
-      <Card title="Proposal vs last year's actual" hint="Blue = proposed, gold = prior-year actual" style={{ marginTop: 16 }}>
+      {loading ? <div className="loading">Loading…</div> : (
+        <div className="stack" style={{ gap: 20 }}>
+          {renderTableSection(capexRows, {
+            prevActual: totals.capexPrevActual, curBudget: totals.capexCurBudget, curActual: totals.capexCurActual,
+            committed: totals.capexCommitted, suggested: totals.capexSuggested, planned: totals.capexPlanned
+          }, "CapEx (Capital Expenditure)", "📦")}
+
+          {renderTableSection(opexRows, {
+            prevActual: totals.opexPrevActual, curBudget: totals.opexCurBudget, curActual: totals.opexCurActual,
+            committed: totals.opexCommitted, suggested: totals.opexSuggested, planned: totals.opexPlanned
+          }, "OpEx (Operating Expenditure)", "🔄")}
+        </div>
+      )}
+
+      <Card title="Proposal vs last year's actual" hint="Blue = proposed, gold = prior-year actual" style={{ marginTop: 20 }}>
         <GroupedBars rows={chartRows} />
       </Card>
     </Shell>

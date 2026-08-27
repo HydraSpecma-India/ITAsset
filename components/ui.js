@@ -73,37 +73,36 @@ export function Empty({ children }) {
 
 /* ---------------------------------------------------------- charts */
 
-export function GroupedBars({ rows, height = 300, onBarClick }) {
-  // rows: [{ label, budget, consumed }]
+export function GroupedBars({ rows, height = 240, onBarClick }) {
   if (!rows.length) return <Empty>No budget lines yet.</Empty>;
   const max = Math.max(1, ...rows.map((r) => Math.max(r.budget, r.consumed)));
-  const rowH = 34;
-  const h = Math.max(height, rows.length * rowH + 16);
+  const rowH = 26;
+  const h = rows.length * rowH + 16;
   const labelW = 168;
 
   return (
     <div>
-      <div className="legend" style={{ marginBottom: 12 }}>
-        <span><i style={{ background: "var(--blue)" }} />Budget</span>
-        <span><i style={{ background: "var(--gold)" }} />Consumed</span>
+      <div className="legend" style={{ marginBottom: 10 }}>
+        <span><i style={{ background: "var(--blue)" }} />Budget / Proposed</span>
+        <span><i style={{ background: "var(--gold)" }} />Consumed / Actual</span>
         {onBarClick && <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--gold)" }}>💡 Click any bar for details</span>}
       </div>
-      <div style={{ overflowX: "auto" }}>
-        <svg width="100%" viewBox={`0 0 700 ${h}`} style={{ minWidth: 560 }} role="img">
+      <div style={{ maxHeight: 260, overflowY: "auto", overflowX: "auto" }}>
+        <svg width="100%" height={h} viewBox={`0 0 700 ${h}`} style={{ minWidth: 560 }} role="img">
           {rows.map((r, i) => {
-            const y = i * rowH + 8;
+            const y = i * rowH + 4;
             const barW = 700 - labelW - 92;
             const bw = (r.budget / max) * barW;
             const cw = (r.consumed / max) * barW;
             const over = r.consumed > r.budget;
             return (
               <g key={i} onClick={() => onBarClick && onBarClick(r)} style={{ cursor: onBarClick ? "pointer" : "default" }}>
-                <text x="0" y={y + 13} fill="var(--muted)" fontSize="11.5" fontFamily="var(--font-body)">
+                <text x="0" y={y + 11} fill="var(--muted)" fontSize="11" fontFamily="var(--font-body)">
                   {r.label.length > 24 ? r.label.slice(0, 23) + "…" : r.label}
                 </text>
-                <rect x={labelW} y={y + 3} width={Math.max(bw, 1)} height="9" rx="3" fill="var(--blue)" opacity="0.55" />
-                <rect x={labelW} y={y + 15} width={Math.max(cw, 1)} height="9" rx="3" fill={over ? "var(--red)" : "var(--gold)"} />
-                <text x={labelW + Math.max(bw, cw) + 8} y={y + 17} fill="var(--faint)" fontSize="10.5" fontFamily="var(--font-mono)">
+                <rect x={labelW} y={y + 2} width={Math.max(bw, 1)} height="7" rx="2" fill="var(--blue)" opacity="0.65" />
+                <rect x={labelW} y={y + 11} width={Math.max(cw, 1)} height="7" rx="2" fill={over ? "var(--red)" : "var(--gold)"} />
+                <text x={labelW + Math.max(bw, cw) + 8} y={y + 13} fill="var(--faint)" fontSize="10" fontFamily="var(--font-mono)">
                   {moneyShort(r.consumed)} / {moneyShort(r.budget)}
                 </text>
               </g>

@@ -321,6 +321,91 @@ export default function BudgetsPage() {
     );
   };
 
+  const capexView = useMemo(() => view.filter((v) => (v.category_type || "capex") !== "opex"), [view]);
+  const opexView = useMemo(() => view.filter((v) => (v.category_type || "capex") === "opex"), [view]);
+
+  const capexTotals = useMemo(() => {
+    const t = { lb: 0, lc: 0, gb: 0, gc: 0 };
+    capexView.forEach((v) => {
+      t.lb += v.local.budget; t.lc += v.local.consumed;
+      t.gb += v.global.budget; t.gc += v.global.consumed;
+    });
+    return t;
+  }, [capexView]);
+
+  const opexTotals = useMemo(() => {
+    const t = { lb: 0, lc: 0, gb: 0, gc: 0 };
+    opexView.forEach((v) => {
+      t.lb += v.local.budget; t.lc += v.local.consumed;
+      t.gb += v.global.budget; t.gc += v.global.consumed;
+    });
+    return t;
+  }, [opexView]);
+
+  const renderBudgetTable = (sectionView, sectionTotals, title, typeBadge) => (
+    <Card title={`${typeBadge} ${title} — ${year}`} hint="Category-wise budget split by local and global staff">
+      {sectionView.length === 0 ? (
+        <Empty>No categories in this section.</Empty>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th rowSpan="2" style={{ minWidth: 160 }}>Category</th>
+                <th colSpan="5" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Local staff</th>
+                <th colSpan="5" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Global staff</th>
+                <th rowSpan="2" className="num">Total balance</th>
+              </tr>
+              <tr>
+                <th className="num" style={{ borderLeft: "1px solid var(--line-soft)" }}>Budget</th>
+                <th className="num">Consumed</th>
+                <th className="num">Balance</th>
+                <th>Used</th>
+                <th>Remarks / Justification</th>
+                <th className="num" style={{ borderLeft: "1px solid var(--line-soft)" }}>Budget</th>
+                <th className="num">Consumed</th>
+                <th className="num">Balance</th>
+                <th>Used</th>
+                <th>Remarks / Justification</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sectionView.map((v) => {
+                const tb = v.local.budget + v.global.budget - v.local.consumed - v.global.consumed;
+                return (
+                  <tr key={v.id}>
+                    <td style={{ fontWeight: 600 }}>{v.name}</td>
+                    {cell(v, "local", v.id)}
+                    {cell(v, "global", v.id)}
+                    <td className="num mono" style={{ color: tb < 0 ? "var(--red)" : "var(--text)", fontWeight: 600 }}>
+                      {money(tb)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Subtotal</td>
+                <td className="num mono">{money(sectionTotals.lb)}</td>
+                <td className="num mono">{money(sectionTotals.lc)}</td>
+                <td className="num mono">{money(sectionTotals.lb - sectionTotals.lc)}</td>
+                <td />
+                <td />
+                <td className="num mono">{money(sectionTotals.gb)}</td>
+                <td className="num mono">{money(sectionTotals.gc)}</td>
+                <td className="num mono">{money(sectionTotals.gb - sectionTotals.gc)}</td>
+                <td />
+                <td />
+                <td className="num mono">{money(sectionTotals.lb + sectionTotals.gb - sectionTotals.lc - sectionTotals.gc)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+
   return (
     <Shell
       title="Budget vs Actual"
@@ -369,72 +454,12 @@ export default function BudgetsPage() {
         </div>
       </div>
 
-      <Card title={`Calendar year ${year}`} hint="Consumption is matched to purchases by category, staff scope and purchase date">
-        {loading ? <div className="loading">Loading…</div> : view.length === 0 ? (
-          <Empty>No categories set up yet.</Empty>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th rowSpan="2" style={{ minWidth: 160 }}>Category</th>
-                  <th colSpan="5" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Local staff</th>
-                  <th colSpan="5" style={{ textAlign: "center", borderLeft: "1px solid var(--line-soft)" }}>Global staff</th>
-                  <th rowSpan="2" className="num">Total balance</th>
-                </tr>
-                <tr>
-                  <th className="num" style={{ borderLeft: "1px solid var(--line-soft)" }}>Budget</th>
-                  <th className="num">Consumed</th>
-                  <th className="num">Balance</th>
-                  <th>Used</th>
-                  <th>Remarks / Justification</th>
-                  <th className="num" style={{ borderLeft: "1px solid var(--line-soft)" }}>Budget</th>
-                  <th className="num">Consumed</th>
-                  <th className="num">Balance</th>
-                  <th>Used</th>
-                  <th>Remarks / Justification</th>
-                </tr>
-              </thead>
-              <tbody>
-                {view.map((v) => {
-                  const tb = v.local.budget + v.global.budget - v.local.consumed - v.global.consumed;
-                  return (
-                    <tr key={v.id}>
-                      <td style={{ fontWeight: 600 }}>
-                        <div>{v.name}</div>
-                        <span className={`pill ${(v.category_type || "capex") === "opex" ? "amber" : "blue"}`} style={{ fontSize: 9, padding: "1px 6px", marginTop: 3 }}>
-                          {(v.category_type || "capex").toUpperCase()}
-                        </span>
-                      </td>
-                      {cell(v, "local", v.id)}
-                      {cell(v, "global", v.id)}
-                      <td className="num mono" style={{ color: tb < 0 ? "var(--red)" : "var(--text)", fontWeight: 600 }}>
-                        {money(tb)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td>Total</td>
-                  <td className="num mono">{money(totals.lb)}</td>
-                  <td className="num mono">{money(totals.lc)}</td>
-                  <td className="num mono">{money(totals.lb - totals.lc)}</td>
-                  <td />
-                  <td />
-                  <td className="num mono">{money(totals.gb)}</td>
-                  <td className="num mono">{money(totals.gc)}</td>
-                  <td className="num mono">{money(totals.gb - totals.gc)}</td>
-                  <td />
-                  <td />
-                  <td className="num mono">{money(totals.lb + totals.gb - totals.lc - totals.gc)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </Card>
+      {loading ? <div className="loading">Loading…</div> : (
+        <div className="stack" style={{ gap: 20 }}>
+          {(typeFilter === "all" || typeFilter === "capex") && renderBudgetTable(capexView, capexTotals, "CapEx Budget (Capital Expenditure)", "📦")}
+          {(typeFilter === "all" || typeFilter === "opex") && renderBudgetTable(opexView, opexTotals, "OpEx Budget (Operating Expenditure)", "🔄")}
+        </div>
+      )}
 
       {historyOpen && (
         <Modal title={`📜 Budget Version Control & Revision History — ${year}`} onClose={() => setHistoryOpen(false)}>
