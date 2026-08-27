@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Shell from "@/components/Shell";
 import { Card, Empty, Kpi } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/session";
 import { useDept } from "@/lib/department";
 import { money, dateStr, daysUntil, expiryState, csvDownload } from "@/lib/format";
 
