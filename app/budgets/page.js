@@ -462,7 +462,7 @@ export default function BudgetsPage() {
       )}
 
       {historyOpen && (
-        <Modal title={`📜 Budget Version Control & Revision History — ${year}`} onClose={() => setHistoryOpen(false)}>
+        <Modal title={`📜 Budget Version Control & Revision History — ${year}`} onClose={() => setHistoryOpen(false)} full>
           <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, minHeight: 460 }}>
             {/* Left Sidebar: Version List */}
             <div style={{ borderRight: "1px solid var(--hs-charcoal)", paddingRight: 14, display: "flex", flexDirection: "column", gap: 8 }}>

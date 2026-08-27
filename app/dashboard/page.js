@@ -53,11 +53,22 @@ export default function DashboardPage() {
   const itAssets = useMemo(() => assets.filter((a) => isIncludedInBudget(a)), [assets]);
 
   const totals = useMemo(() => {
-    const t = { budget: 0, consumed: 0, local: { b: 0, c: 0 }, global: { b: 0, c: 0 } };
+    const t = {
+      budget: 0, consumed: 0,
+      capexBudget: 0, capexConsumed: 0,
+      opexBudget: 0, opexConsumed: 0,
+      local: { b: 0, c: 0 }, global: { b: 0, c: 0 }
+    };
     summary.forEach((r) => {
-      t.budget += Number(r.budget_amount);
+      const bAmt = Number(r.budget_amount);
+      t.budget += bAmt;
       const k = r.scope === "global" ? "global" : "local";
-      t[k].b += Number(r.budget_amount);
+      t[k].b += bAmt;
+      if ((r.category_type || "capex") === "opex") {
+        t.opexBudget += bAmt;
+      } else {
+        t.capexBudget += bAmt;
+      }
     });
 
     itAssets.forEach((a) => {
@@ -65,6 +76,11 @@ export default function DashboardPage() {
       t.consumed += val;
       const k = a.scope === "global" ? "global" : "local";
       t[k].c += val;
+      if ((a.it_categories?.category_type || "capex") === "opex") {
+        t.opexConsumed += val;
+      } else {
+        t.capexConsumed += val;
+      }
     });
 
     t.balance = t.budget - t.consumed;
@@ -159,6 +175,12 @@ export default function DashboardPage() {
     if (filterKey === "admin_only") {
       return assets.filter((a) => !isIncludedInBudget(a));
     }
+    if (filterKey === "capex") {
+      return itAssets.filter((a) => (a.it_categories?.category_type || "capex") !== "opex");
+    }
+    if (filterKey === "opex") {
+      return itAssets.filter((a) => (a.it_categories?.category_type || "capex") === "opex");
+    }
     if (filterKey === "expiry") {
       return upcoming;
     }
@@ -176,6 +198,10 @@ export default function DashboardPage() {
       setActiveSelection({ title: `IT Consumed Purchases (${year})`, filterKey: "it_only" });
     } else if (type === "balance") {
       setActiveSelection({ title: `Active IT Assets (${year})`, filterKey: "it_only" });
+    } else if (type === "capex") {
+      setActiveSelection({ title: `📦 CapEx IT Purchases (${year})`, filterKey: "capex" });
+    } else if (type === "opex") {
+      setActiveSelection({ title: `🔄 OpEx IT Purchases (${year})`, filterKey: "opex" });
     } else if (type === "expiry") {
       setActiveSelection({ title: `Upcoming Expiries & Renewals`, filterKey: "expiry" });
     }
@@ -228,20 +254,22 @@ export default function DashboardPage() {
         <div className="loading">Loading…</div>
       ) : (
         <div className="grid" style={{ gap: 16 }}>
-          <div className="grid g4">
-            <Kpi label={`Budget ${year}`} value={money(totals.budget)} foot={`${summary.length} budget lines`} tone="gold" onClick={() => handleKpiClick("budget")} />
-            <Kpi label="Consumed" value={money(totals.consumed)} foot={`${assets.length} purchase lines`} onClick={() => handleKpiClick("consumed")} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 14 }}>
+            <Kpi label={`Budget ${year}`} value={money(totals.budget)} foot={`${summary.length} lines`} tone="gold" onClick={() => handleKpiClick("budget")} />
+            <Kpi label="Consumed" value={money(totals.consumed)} foot={`${assets.length} items`} onClick={() => handleKpiClick("consumed")} />
+            <Kpi label="📦 CapEx Spend" value={money(totals.capexConsumed)} foot={`Budget: ${moneyShort(totals.capexBudget)}`} tone="good" onClick={() => handleKpiClick("capex")} />
+            <Kpi label="🔄 OpEx Spend" value={money(totals.opexConsumed)} foot={`Budget: ${moneyShort(totals.opexBudget)}`} tone="warn" onClick={() => handleKpiClick("opex")} />
             <Kpi
               label="Balance available"
               value={money(totals.balance)}
-              foot={`${totals.pct.toFixed(1)}% of budget used`}
+              foot={`${totals.pct.toFixed(1)}% used`}
               tone={totals.balance < 0 ? "bad" : totals.pct >= 90 ? "warn" : "good"}
               onClick={() => handleKpiClick("balance")}
             />
             <Kpi
               label="Expiring in 90 days"
               value={alertBuckets.expired.length + alertBuckets.critical.length + alertBuckets.soon.length}
-              foot={`${alertBuckets.expired.length} already expired`}
+              foot={`${alertBuckets.expired.length} expired`}
               tone={alertBuckets.expired.length || alertBuckets.critical.length ? "bad" : "good"}
               onClick={() => handleKpiClick("expiry")}
             />

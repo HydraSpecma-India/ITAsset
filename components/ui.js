@@ -43,10 +43,10 @@ export function Field({ label, children }) {
   );
 }
 
-export function Modal({ title, onClose, children, wide }) {
+export function Modal({ title, onClose, children, wide, full }) {
   return (
     <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`card modal ${wide ? "" : "narrow"}`}>
+      <div className={`card modal ${full ? "full" : wide ? "wide" : "narrow"}`}>
         <div className="card-head">
           <h3>{title}</h3>
           <button className="btn ghost sm" onClick={onClose}>Close</button>

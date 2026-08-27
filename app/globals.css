@@ -241,12 +241,17 @@ tfoot td { padding: 10px 11px; border-top: 1px solid var(--gold); font-weight: 7
   overflow: hidden;
 }
 .modal.narrow { max-width: 520px; }
+.modal.wide { max-width: 1100px; width: 92vw; }
+.modal.full { max-width: 96vw; width: 96vw; height: 92vh; max-height: 92vh; }
 .modal .card-head {
   flex-shrink: 0; position: sticky; top: 0; z-index: 10;
   background: #1D222A; border-bottom: 1px solid var(--hs-charcoal); padding: 14px 18px;
 }
 .modal .card-body {
   overflow-y: auto; flex: 1; max-height: calc(100vh - 120px); padding: 20px;
+}
+.modal.full .card-body {
+  max-height: calc(92vh - 65px);
 }
 
 .alert { padding: 10px 13px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
