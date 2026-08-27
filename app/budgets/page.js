@@ -44,13 +44,13 @@ export default function BudgetsPage() {
 
     if (dept && dept !== "All") {
       if (dept === "IT") {
-        catQuery = catQuery.or("department.eq.IT,department.is.null");
-        budgetQuery = budgetQuery.or("department.eq.IT,department.is.null");
-        assetQuery = assetQuery.or("department.eq.IT,department.is.null");
+        catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
+        budgetQuery = budgetQuery.or("budget_department.eq.IT,budget_department.is.null");
+        assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        catQuery = catQuery.eq("department", dept);
-        budgetQuery = budgetQuery.eq("department", dept);
-        assetQuery = assetQuery.eq("department", dept);
+        catQuery = catQuery.eq("budget_department", dept);
+        budgetQuery = budgetQuery.eq("budget_department", dept);
+        assetQuery = assetQuery.eq("budget_department", dept);
       }
     }
 
@@ -209,7 +209,7 @@ export default function BudgetsPage() {
             const targetDept = dept === "All" ? "IT" : dept;
             const { error: insErr } = await supabase
               .from("it_budgets")
-              .insert({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal, department: targetDept });
+              .insert({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal, budget_department: targetDept });
             if (insErr) throw insErr;
           }
         }

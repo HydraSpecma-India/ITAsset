@@ -32,13 +32,13 @@ export default function PlanningPage() {
 
     if (dept && dept !== "All") {
       if (dept === "IT") {
-        catQuery = catQuery.or("department.eq.IT,department.is.null");
-        planQuery = planQuery.or("department.eq.IT,department.is.null");
-        assetQuery = assetQuery.or("department.eq.IT,department.is.null");
+        catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
+        planQuery = planQuery.or("budget_department.eq.IT,budget_department.is.null");
+        assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        catQuery = catQuery.eq("department", dept);
-        planQuery = planQuery.eq("department", dept);
-        assetQuery = assetQuery.eq("department", dept);
+        catQuery = catQuery.eq("budget_department", dept);
+        planQuery = planQuery.eq("budget_department", dept);
+        assetQuery = assetQuery.eq("budget_department", dept);
       }
     }
 
@@ -169,9 +169,9 @@ export default function PlanningPage() {
       planned_amount: Number(draft[r.key] || 0),
       basis: `Prior-year actual ${Math.round(r.curActual)}; committed renewals ${Math.round(r.committed)}`,
       notes: draftNotes[r.key] || null,
-      department: targetDept,
+      budget_department: targetDept,
     }));
-    const { error } = await supabase.from("it_plan_lines").upsert(payload, { onConflict: "plan_year,category_id,scope,department" });
+    const { error } = await supabase.from("it_plan_lines").upsert(payload, { onConflict: "plan_year,category_id,scope,budget_department" });
     setSaving(false);
     setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Proposal for ${planYear} saved.` });
     if (!error) load();
@@ -184,9 +184,9 @@ export default function PlanningPage() {
       budget_year: planYear, category_id: r.category_id, scope: r.scope,
       amount: Number(draft[r.key] || 0),
       notes: draftNotes[r.key] || `Approved from ${planYear} proposal`,
-      department: targetDept,
+      budget_department: targetDept,
     }));
-    const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope,department" });
+    const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope,budget_department" });
     setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Approved budget for ${planYear} created. See Budget vs Actual.` });
   }
 

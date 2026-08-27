@@ -47,13 +47,13 @@ export default function DashboardPage() {
 
       if (dept && dept !== "All") {
         if (dept === "IT") {
-          bQuery = bQuery.or("department.eq.IT,department.is.null");
-          aQuery = aQuery.or("department.eq.IT,department.is.null");
-          eQuery = eQuery.or("department.eq.IT,department.is.null");
+          bQuery = bQuery.or("budget_department.eq.IT,budget_department.is.null");
+          aQuery = aQuery.or("budget_department.eq.IT,budget_department.is.null");
+          eQuery = eQuery.or("budget_department.eq.IT,budget_department.is.null");
         } else {
-          bQuery = bQuery.eq("department", dept);
-          aQuery = aQuery.eq("department", dept);
-          eQuery = eQuery.eq("department", dept);
+          bQuery = bQuery.eq("budget_department", dept);
+          aQuery = aQuery.eq("budget_department", dept);
+          eQuery = eQuery.eq("budget_department", dept);
         }
       }
 

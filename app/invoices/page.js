@@ -63,13 +63,13 @@ export default function InvoicesPage() {
 
     if (dept && dept !== "All") {
       if (dept === "IT") {
-        invQuery = invQuery.or("department.eq.IT,department.is.null");
-        catQuery = catQuery.or("department.eq.IT,department.is.null");
-        venQuery = venQuery.or("department.eq.IT,department.is.null");
+        invQuery = invQuery.or("budget_department.eq.IT,budget_department.is.null");
+        catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
+        venQuery = venQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        invQuery = invQuery.eq("department", dept);
-        catQuery = catQuery.eq("department", dept);
-        venQuery = venQuery.eq("department", dept);
+        invQuery = invQuery.eq("budget_department", dept);
+        catQuery = catQuery.eq("budget_department", dept);
+        venQuery = venQuery.eq("budget_department", dept);
       }
     }
 
@@ -1468,7 +1468,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
             tax_amount: inv.tax_amount,
             other_charges: 0,
             notes: "Imported via CSV Importer",
-            department: targetDept,
+            budget_department: targetDept,
           })
           .select("id")
           .single();
@@ -1491,7 +1491,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           purchase_date: l.purchase_date,
           status: l.status || "in_use",
           staff_name: l.staff_name || null,
-          department: targetDept,
+          budget_department: targetDept,
           remarks: (l.include_in_budget === false ? "[EXCLUDED_FROM_BUDGET] " : "") + (l.remarks || "")
         }));
 
