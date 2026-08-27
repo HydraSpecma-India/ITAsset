@@ -54,15 +54,16 @@ export default function BudgetsPage() {
 
     if (activeDept && activeDept !== "All") {
       if (activeDept === "IT") {
+        catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
         budgetQuery = budgetQuery.or("budget_department.eq.IT,budget_department.is.null");
         assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
         verQuery = verQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
+        catQuery = catQuery.eq("budget_department", activeDept);
         budgetQuery = budgetQuery.eq("budget_department", activeDept);
         assetQuery = assetQuery.eq("budget_department", activeDept);
         verQuery = verQuery.eq("budget_department", activeDept);
       }
-      catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
     }
 
     const [c, s, a, v] = await Promise.all([

@@ -56,7 +56,7 @@ export default function AssetsPage() {
         catQuery = catQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
         assetQuery = assetQuery.eq("budget_department", activeDept);
-        catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
+        catQuery = catQuery.eq("budget_department", activeDept);
       }
     }
 

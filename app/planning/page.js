@@ -45,7 +45,7 @@ export default function PlanningPage() {
         planQuery = planQuery.or("budget_department.eq.IT,budget_department.is.null");
         assetQuery = assetQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
+        catQuery = catQuery.eq("budget_department", activeDept);
         planQuery = planQuery.eq("budget_department", activeDept);
         assetQuery = assetQuery.eq("budget_department", activeDept);
       }

@@ -77,8 +77,8 @@ export default function InvoicesPage() {
         venQuery = venQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
         invQuery = invQuery.eq("budget_department", activeDept);
-        catQuery = catQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
-        venQuery = venQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
+        catQuery = catQuery.eq("budget_department", activeDept);
+        venQuery = venQuery.eq("budget_department", activeDept);
       }
     }
 

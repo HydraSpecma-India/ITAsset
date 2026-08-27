@@ -38,8 +38,8 @@ export default function MastersPage() {
         cQuery = cQuery.or("budget_department.eq.IT,budget_department.is.null");
         vQuery = vQuery.or("budget_department.eq.IT,budget_department.is.null");
       } else {
-        cQuery = cQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
-        vQuery = vQuery.or(`budget_department.eq.${activeDept},budget_department.is.null`);
+        cQuery = cQuery.eq("budget_department", activeDept);
+        vQuery = vQuery.eq("budget_department", activeDept);
       }
     }
 
