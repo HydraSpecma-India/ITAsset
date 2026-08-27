@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Shell from "@/components/Shell";
 import { Card, Empty, Kpi } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
+import { useDept } from "@/lib/department";
 import { money, dateStr, daysUntil, expiryState, csvDownload } from "@/lib/format";
 
 const TYPES = ["Warranty", "Licence / Subscription", "AMC / Service contract", "Replacement due"];
@@ -17,6 +18,7 @@ const WINDOWS = [
 ];
 
 export default function ExpiryPage() {
+  const { dept } = useDept();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState("all");
@@ -25,11 +27,15 @@ export default function ExpiryPage() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("v_it_expiry_alerts").select("*").order("expiry_date");
+      let query = supabase.from("v_it_expiry_alerts").select("*").order("expiry_date");
+      if (dept !== "All") {
+        query = query.or(`department.eq.${dept},department.is.null`);
+      }
+      const { data } = await query;
       setRows((data || []).map((r) => ({ ...r, days: daysUntil(r.expiry_date) })));
       setLoading(false);
     })();
-  }, []);
+  }, [dept]);
 
   const counts = useMemo(() => ({
     expired: rows.filter((r) => r.days < 0).length,

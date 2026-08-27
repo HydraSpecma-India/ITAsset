@@ -34,7 +34,8 @@ const MONTH_OPTIONS = [
 
 export default function InvoicesPage() {
   const { profile } = useAuth();
-  const isAdmin = profile?.role === "admin";
+  const { dept } = useDept();
+  const isAdmin = profile?.role === "admin" || profile?.role === "dept_admin";
 
   const [invoices, setInvoices] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -55,10 +56,20 @@ export default function InvoicesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [i, c, v, emp, dept] = await Promise.all([
-      supabase.from("v_it_invoice_totals").select("*").order("invoice_date", { ascending: false }),
-      supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order"),
-      supabase.from("it_vendors").select("*").eq("is_active", true).order("name"),
+    let invQuery = supabase.from("v_it_invoice_totals").select("*").order("invoice_date", { ascending: false });
+    let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
+    let venQuery = supabase.from("it_vendors").select("*").eq("is_active", true).order("name");
+
+    if (dept !== "All") {
+      invQuery = invQuery.or(`department.eq.${dept},department.is.null`);
+      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
+      venQuery = venQuery.or(`department.eq.${dept},department.is.null`);
+    }
+
+    const [i, c, v, emp, deptData] = await Promise.all([
+      invQuery,
+      catQuery,
+      venQuery,
       supabase.from("it_employees").select("*").eq("is_active", true).order("full_name"),
       supabase.from("it_departments").select("*").eq("is_active", true).order("name"),
     ]);
@@ -66,10 +77,10 @@ export default function InvoicesPage() {
     setCategories(c.data || []);
     setVendors(v.data || []);
     setEmployees(emp.data || []);
-    setDepartments(dept.data || []);
+    setDepartments(deptData.data || []);
     setSelectedInvIds(new Set());
     setLoading(false);
-  }, []);
+  }, [dept]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1438,6 +1449,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
         setStatusMsg(`Importing invoice ${targetInvoiceNo}...`);
         const vendorId = vendorMap.get((inv.vendor_name || "").toLowerCase()) || null;
 
+        const targetDept = dept === "All" ? "IT" : dept;
         const { data: dbInv, error: invErr } = await supabase
           .from("it_invoices")
           .insert({
@@ -1448,7 +1460,8 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
             currency: "INR",
             tax_amount: inv.tax_amount,
             other_charges: 0,
-            notes: "Imported via CSV Importer"
+            notes: "Imported via CSV Importer",
+            department: targetDept,
           })
           .select("id")
           .single();
@@ -1471,6 +1484,7 @@ function CsvImportModal({ categories, vendors, onClose, onImported }) {
           purchase_date: l.purchase_date,
           status: l.status || "in_use",
           staff_name: l.staff_name || null,
+          department: targetDept,
           remarks: (l.include_in_budget === false ? "[EXCLUDED_FROM_BUDGET] " : "") + (l.remarks || "")
         }));
 

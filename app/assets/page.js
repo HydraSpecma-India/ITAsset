@@ -6,9 +6,11 @@ import { Card, Empty, Kpi } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { money, dateStr, currentYear, csvDownload, ASSET_STATUS, daysUntil, expiryState } from "@/lib/format";
 import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
 
 export default function AssetsPage() {
   const { profile } = useAuth();
+  const { dept } = useDept();
   const isAdmin = profile?.role === "admin";
   const isEmployee = profile?.role === "employee";
 
@@ -34,20 +36,28 @@ export default function AssetsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [a, c, emp, dept] = await Promise.all([
-      supabase.from("it_assets")
+    let assetQuery = supabase.from("it_assets")
         .select("*, it_categories(name, category_type), it_invoices(invoice_no, invoice_date, it_vendors(name))")
-        .order("purchase_date", { ascending: false }),
-      supabase.from("it_categories").select("*").order("sort_order"),
+        .order("purchase_date", { ascending: false });
+    let catQuery = supabase.from("it_categories").select("*").order("sort_order");
+
+    if (dept !== "All") {
+      assetQuery = assetQuery.or(`department.eq.${dept},department.is.null`);
+      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
+    }
+
+    const [a, c, emp, deptData] = await Promise.all([
+      assetQuery,
+      catQuery,
       supabase.from("it_employees").select("*").eq("is_active", true).order("full_name"),
       supabase.from("it_departments").select("*").eq("is_active", true).order("name"),
     ]);
     setRows(a.data || []);
     setCategories(c.data || []);
     setEmployees(emp.data || []);
-    setDepartments(dept.data || []);
+    setDepartments(deptData.data || []);
     setLoading(false);
-  }, []);
+  }, [dept]);
 
   useEffect(() => { load(); }, [load]);
 
