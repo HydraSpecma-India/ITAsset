@@ -62,8 +62,8 @@ export default function MastersPage() {
     const targetDept = dept === "All" ? "IT" : dept;
 
     const payload = kind === "category"
-      ? { name: rest.name.trim(), description: rest.description || null, category_type: rest.category_type || "capex", sort_order: Number(rest.sort_order || 100), is_active: !!rest.is_active, department: targetDept }
-      : { name: rest.name.trim(), gst_no: rest.gst_no || null, contact_person: rest.contact_person || null, phone: rest.phone || null, email: rest.email || null, is_active: !!rest.is_active, department: targetDept };
+      ? { name: rest.name.trim(), description: rest.description || null, category_type: rest.category_type || "capex", sort_order: Number(rest.sort_order || 100), is_active: !!rest.is_active, budget_department: targetDept, department: targetDept }
+      : { name: rest.name.trim(), gst_no: rest.gst_no || null, contact_person: rest.contact_person || null, phone: rest.phone || null, email: rest.email || null, is_active: !!rest.is_active, budget_department: targetDept, department: targetDept };
     
     const { error } = id
       ? await supabase.from(table).update(payload).eq("id", id)
