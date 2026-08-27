@@ -20,7 +20,7 @@ const NAV = [
   ]},
   { group: "Setup", items: [
     { href: "/masters", label: "Categories & Vendors", ico: "⚙", hideForEmployee: true },
-    { href: "/users", label: "Users", ico: "◉", adminOnly: true },
+    { href: "/users", label: "Users", ico: "◉", globalAdminOnly: true },
   ]},
 ];
 
@@ -64,6 +64,7 @@ export default function Shell({ title, subtitle, actions, children }) {
     return <div className="loading">Loading…</div>;
   }
 
+  const isGlobalAdmin = profile.role === "admin" && (profile.department === "All" || !profile.department || profile.department === "IT");
   const isAdmin = profile.role === "admin" || profile.role === "dept_admin";
   const isGlobalReader = profile.role === "global_reader" || profile.role === "viewer";
   const isEmployee = profile.role === "employee";
@@ -72,7 +73,7 @@ export default function Shell({ title, subtitle, actions, children }) {
 
   const deptLabel = profile.department && profile.department !== "All" ? `${profile.department}` : "";
   const roleBadgeText = isAdmin
-    ? (deptLabel ? `${deptLabel} Admin` : "Global Admin")
+    ? (isGlobalAdmin ? "Global Admin" : `${deptLabel || "Dept"} Admin`)
     : isGlobalReader
     ? "Global Reader"
     : isEmployee
@@ -95,7 +96,12 @@ export default function Shell({ title, subtitle, actions, children }) {
         </div>
 
         {NAV.map((g) => {
-          const items = g.items.filter((i) => (!i.adminOnly || isAdmin) && (!i.hideForEmployee || !isEmployee));
+          const items = g.items.filter((i) => {
+            if (i.globalAdminOnly && !isGlobalAdmin) return false;
+            if (i.adminOnly && !isAdmin) return false;
+            if (i.hideForEmployee && isEmployee) return false;
+            return true;
+          });
           if (!items.length) return null;
           return (
             <div key={g.group}>

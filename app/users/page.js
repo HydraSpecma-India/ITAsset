@@ -63,6 +63,20 @@ export default function UsersPage() {
     load();
   }
 
+  const isGlobalAdmin = profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT");
+
+  if (!isGlobalAdmin) {
+    return (
+      <Shell title="Access Denied" subtitle="User Management is restricted to Global Administrators only">
+        <Card title="🔒 Restricted Access">
+          <div style={{ padding: "20px 10px", color: "var(--muted)" }}>
+            Access Denied. Only Global Administrators can view or manage user accounts and department permissions.
+          </div>
+        </Card>
+      </Shell>
+    );
+  }
+
   return (
     <Shell
       title="Users & Department Access"
