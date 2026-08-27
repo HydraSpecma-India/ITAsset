@@ -43,16 +43,24 @@ export default function DashboardPage() {
     (async () => {
       let bQuery = supabase.from("it_budgets").select("*, it_categories(id,name,category_type,sort_order)").eq("budget_year", year);
       let aQuery = supabase.from("it_assets").select("*, it_categories(id,name,category_type,sort_order), it_invoices(invoice_no, it_vendors(name))").eq("budget_year", year);
+      let eQuery = supabase.from("v_it_expiry_alerts").select("*");
 
-      if (dept !== "All") {
-        bQuery = bQuery.or(`department.eq.${dept},department.is.null`);
-        aQuery = aQuery.or(`department.eq.${dept},department.is.null`);
+      if (dept && dept !== "All") {
+        if (dept === "IT") {
+          bQuery = bQuery.or("department.eq.IT,department.is.null");
+          aQuery = aQuery.or("department.eq.IT,department.is.null");
+          eQuery = eQuery.or("department.eq.IT,department.is.null");
+        } else {
+          bQuery = bQuery.eq("department", dept);
+          aQuery = aQuery.eq("department", dept);
+          eQuery = eQuery.eq("department", dept);
+        }
       }
 
       const [s, a, e] = await Promise.all([
         bQuery,
         aQuery,
-        supabase.from("v_it_expiry_alerts").select("*"),
+        eQuery,
       ]);
       setSummary(s.data || []);
       setAssets(a.data || []);

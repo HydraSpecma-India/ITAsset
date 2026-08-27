@@ -41,9 +41,14 @@ export default function AssetsPage() {
         .order("purchase_date", { ascending: false });
     let catQuery = supabase.from("it_categories").select("*").order("sort_order");
 
-    if (dept !== "All") {
-      assetQuery = assetQuery.or(`department.eq.${dept},department.is.null`);
-      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
+    if (dept && dept !== "All") {
+      if (dept === "IT") {
+        assetQuery = assetQuery.or("department.eq.IT,department.is.null");
+        catQuery = catQuery.or("department.eq.IT,department.is.null");
+      } else {
+        assetQuery = assetQuery.eq("department", dept);
+        catQuery = catQuery.eq("department", dept);
+      }
     }
 
     const [a, c, emp, deptData] = await Promise.all([

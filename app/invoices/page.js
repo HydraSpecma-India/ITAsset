@@ -60,10 +60,16 @@ export default function InvoicesPage() {
     let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
     let venQuery = supabase.from("it_vendors").select("*").eq("is_active", true).order("name");
 
-    if (dept !== "All") {
-      invQuery = invQuery.or(`department.eq.${dept},department.is.null`);
-      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
-      venQuery = venQuery.or(`department.eq.${dept},department.is.null`);
+    if (dept && dept !== "All") {
+      if (dept === "IT") {
+        invQuery = invQuery.or("department.eq.IT,department.is.null");
+        catQuery = catQuery.or("department.eq.IT,department.is.null");
+        venQuery = venQuery.or("department.eq.IT,department.is.null");
+      } else {
+        invQuery = invQuery.eq("department", dept);
+        catQuery = catQuery.eq("department", dept);
+        venQuery = venQuery.eq("department", dept);
+      }
     }
 
     const [i, c, v, emp, deptData] = await Promise.all([

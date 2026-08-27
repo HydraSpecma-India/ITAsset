@@ -24,9 +24,14 @@ export default function MastersPage() {
     let cQuery = supabase.from("it_categories").select("*").order("sort_order");
     let vQuery = supabase.from("it_vendors").select("*").order("name");
 
-    if (dept !== "All") {
-      cQuery = cQuery.or(`department.eq.${dept},department.is.null`);
-      vQuery = vQuery.or(`department.eq.${dept},department.is.null`);
+    if (dept && dept !== "All") {
+      if (dept === "IT") {
+        cQuery = cQuery.or("department.eq.IT,department.is.null");
+        vQuery = vQuery.or("department.eq.IT,department.is.null");
+      } else {
+        cQuery = cQuery.eq("department", dept);
+        vQuery = vQuery.eq("department", dept);
+      }
     }
 
     const [c, v] = await Promise.all([cQuery, vQuery]);

@@ -40,16 +40,24 @@ export default function BudgetsPage() {
     setLoading(true);
     let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
     let budgetQuery = supabase.from("it_budgets").select("*").eq("budget_year", year);
+    let assetQuery = supabase.from("it_assets").select("line_total,scope,category_id,department,remarks,it_categories(name)").eq("budget_year", year);
 
-    if (dept !== "All") {
-      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
-      budgetQuery = budgetQuery.or(`department.eq.${dept},department.is.null`);
+    if (dept && dept !== "All") {
+      if (dept === "IT") {
+        catQuery = catQuery.or("department.eq.IT,department.is.null");
+        budgetQuery = budgetQuery.or("department.eq.IT,department.is.null");
+        assetQuery = assetQuery.or("department.eq.IT,department.is.null");
+      } else {
+        catQuery = catQuery.eq("department", dept);
+        budgetQuery = budgetQuery.eq("department", dept);
+        assetQuery = assetQuery.eq("department", dept);
+      }
     }
 
     const [c, s, a, v] = await Promise.all([
       catQuery,
       budgetQuery,
-      supabase.from("it_assets").select("line_total,scope,category_id,remarks,it_categories(name)").eq("budget_year", year),
+      assetQuery,
       supabase.from("it_budget_versions").select("*").eq("budget_year", year).order("version_number", { ascending: false }),
     ]);
 

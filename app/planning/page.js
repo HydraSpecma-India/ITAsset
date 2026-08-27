@@ -28,16 +28,24 @@ export default function PlanningPage() {
     setLoading(true);
     let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
     let planQuery = supabase.from("it_plan_lines").select("*").eq("plan_year", planYear);
+    let assetQuery = supabase.from("it_assets").select("category_id,scope,line_total,department,license_end,amc_end,replacement_due,status");
 
-    if (dept !== "All") {
-      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
-      planQuery = planQuery.or(`department.eq.${dept},department.is.null`);
+    if (dept && dept !== "All") {
+      if (dept === "IT") {
+        catQuery = catQuery.or("department.eq.IT,department.is.null");
+        planQuery = planQuery.or("department.eq.IT,department.is.null");
+        assetQuery = assetQuery.or("department.eq.IT,department.is.null");
+      } else {
+        catQuery = catQuery.eq("department", dept);
+        planQuery = planQuery.eq("department", dept);
+        assetQuery = assetQuery.eq("department", dept);
+      }
     }
 
     const [c, s, a, p] = await Promise.all([
       catQuery,
       supabase.from("v_it_budget_summary").select("*").in("budget_year", [planYear - 1, planYear - 2]),
-      supabase.from("it_assets").select("category_id,scope,line_total,license_end,amc_end,replacement_due,status"),
+      assetQuery,
       planQuery,
     ]);
     setCategories(c.data || []);
