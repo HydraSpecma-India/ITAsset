@@ -1,9 +1,10 @@
 import "./globals.css";
 import { AuthProvider } from "@/lib/session";
+import { DeptProvider } from "@/lib/department";
 
 export const metadata = {
-  title: "IT Purchase & Budget Monitor",
-  description: "Track IT purchases, assets, expiries and budget consumption",
+  title: "Department Purchase & Budget Monitor",
+  description: "Track department purchases, assets, expiries and budget consumption",
 };
 
 export default function RootLayout({ children }) {
@@ -18,7 +19,9 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <DeptProvider>{children}</DeptProvider>
+        </AuthProvider>
       </body>
     </html>
   );

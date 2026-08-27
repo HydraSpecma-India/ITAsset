@@ -5,10 +5,12 @@ import Shell from "@/components/Shell";
 import { Card, Field, Modal, Empty } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
 
 export default function MastersPage() {
   const { profile } = useAuth();
-  const isAdmin = profile?.role === "admin";
+  const { dept, isDeptAdmin } = useDept();
+  const isAdmin = profile?.role === "admin" || profile?.role === "dept_admin";
 
   const [tab, setTab] = useState("categories");
   const [categories, setCategories] = useState([]);
@@ -19,14 +21,19 @@ export default function MastersPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [c, v] = await Promise.all([
-      supabase.from("it_categories").select("*").order("sort_order"),
-      supabase.from("it_vendors").select("*").order("name"),
-    ]);
+    let cQuery = supabase.from("it_categories").select("*").order("sort_order");
+    let vQuery = supabase.from("it_vendors").select("*").order("name");
+
+    if (dept !== "All") {
+      cQuery = cQuery.or(`department.eq.${dept},department.is.null`);
+      vQuery = vQuery.or(`department.eq.${dept},department.is.null`);
+    }
+
+    const [c, v] = await Promise.all([cQuery, vQuery]);
     setCategories(c.data || []);
     setVendors(v.data || []);
     setLoading(false);
-  }, []);
+  }, [dept]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -35,9 +42,13 @@ export default function MastersPage() {
     const table = edit.kind === "category" ? "it_categories" : "it_vendors";
     const { kind, id, ...rest } = edit;
     if (!rest.name?.trim()) return setErr("Name is required.");
+
+    const targetDept = dept === "All" ? "IT" : dept;
+
     const payload = kind === "category"
-      ? { name: rest.name.trim(), description: rest.description || null, category_type: rest.category_type || "capex", sort_order: Number(rest.sort_order || 100), is_active: !!rest.is_active }
-      : { name: rest.name.trim(), gst_no: rest.gst_no || null, contact_person: rest.contact_person || null, phone: rest.phone || null, email: rest.email || null, is_active: !!rest.is_active };
+      ? { name: rest.name.trim(), description: rest.description || null, category_type: rest.category_type || "capex", sort_order: Number(rest.sort_order || 100), is_active: !!rest.is_active, department: targetDept }
+      : { name: rest.name.trim(), gst_no: rest.gst_no || null, contact_person: rest.contact_person || null, phone: rest.phone || null, email: rest.email || null, is_active: !!rest.is_active, department: targetDept };
+    
     const { error } = id
       ? await supabase.from(table).update(payload).eq("id", id)
       : await supabase.from(table).insert(payload);

@@ -5,7 +5,9 @@ import Link from "next/link";
 import Shell from "@/components/Shell";
 import { Card, Kpi, GroupedBars, Columns, Donut, Empty, Progress } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { money, moneyShort, currentYear, dateStr, daysUntil, expiryState } from "@/lib/format";
+import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
+import { money, moneyShort, currentYear, dateStr, daysUntil, expiryState, csvDownload } from "@/lib/format";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -20,6 +22,7 @@ function isIncludedInBudget(a) {
 }
 
 export default function DashboardPage() {
+  const { dept } = useDept();
   const [year, setYear] = useState(currentYear());
   const [summary, setSummary] = useState([]);
   const [assets, setAssets] = useState([]);
@@ -29,7 +32,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("v_it_budget_summary").select("budget_year");
+      const { data } = await supabase.from("it_budgets").select("budget_year");
       const set = new Set([currentYear(), currentYear() + 1, ...(data || []).map((d) => d.budget_year)]);
       setYears([...set].sort((a, b) => b - a));
     })();
@@ -38,9 +41,17 @@ export default function DashboardPage() {
   useEffect(() => {
     setLoading(true);
     (async () => {
+      let bQuery = supabase.from("it_budgets").select("*, it_categories(id,name,category_type,sort_order)").eq("budget_year", year);
+      let aQuery = supabase.from("it_assets").select("*, it_categories(id,name,category_type,sort_order), it_invoices(invoice_no, it_vendors(name))").eq("budget_year", year);
+
+      if (dept !== "All") {
+        bQuery = bQuery.or(`department.eq.${dept},department.is.null`);
+        aQuery = aQuery.or(`department.eq.${dept},department.is.null`);
+      }
+
       const [s, a, e] = await Promise.all([
-        supabase.from("it_budgets").select("*, it_categories(id,name,category_type,sort_order)").eq("budget_year", year),
-        supabase.from("it_assets").select("*, it_categories(id,name,category_type,sort_order), it_invoices(invoice_no, it_vendors(name))").eq("budget_year", year),
+        bQuery,
+        aQuery,
         supabase.from("v_it_expiry_alerts").select("*"),
       ]);
       setSummary(s.data || []);
@@ -48,7 +59,7 @@ export default function DashboardPage() {
       setAlerts(e.data || []);
       setLoading(false);
     })();
-  }, [year]);
+  }, [year, dept]);
 
   const itAssets = useMemo(() => assets.filter((a) => isIncludedInBudget(a)), [assets]);
 

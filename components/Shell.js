@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
 
 const NAV = [
   { group: "Overview", items: [
@@ -25,6 +26,7 @@ const NAV = [
 
 export default function Shell({ title, subtitle, actions, children }) {
   const { user, profile, loading, signOut } = useAuth();
+  const { dept, setDept, availableDepts, isGlobal } = useDept();
   const router = useRouter();
   const pathname = usePathname();
   const [theme, setTheme] = useState("dark");
@@ -62,11 +64,20 @@ export default function Shell({ title, subtitle, actions, children }) {
     return <div className="loading">Loading…</div>;
   }
 
-  const isAdmin = profile.role === "admin";
+  const isAdmin = profile.role === "admin" || profile.role === "dept_admin";
   const isGlobalReader = profile.role === "global_reader" || profile.role === "viewer";
   const isEmployee = profile.role === "employee";
   const initials = (profile.full_name || profile.email || "?")
     .split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+
+  const deptLabel = profile.department && profile.department !== "All" ? `${profile.department}` : "";
+  const roleBadgeText = isAdmin
+    ? (deptLabel ? `${deptLabel} Admin` : "Global Admin")
+    : isGlobalReader
+    ? "Global Reader"
+    : isEmployee
+    ? "Employee"
+    : (deptLabel ? `${deptLabel} Reader` : "Reader");
 
   return (
     <div className="shell">
@@ -121,11 +132,35 @@ export default function Shell({ title, subtitle, actions, children }) {
           </div>
           <div className="topbar-right">
             {actions}
+
+            {/* Department Selector */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.03)", padding: "3px 8px", borderRadius: 8, border: "1px solid var(--line-soft)" }}>
+              <span style={{ fontSize: 11, color: "var(--faint)", fontWeight: 600 }}>🏢 Dept:</span>
+              <select
+                value={dept}
+                onChange={(e) => setDept(e.target.value)}
+                style={{
+                  padding: "3px 6px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  borderRadius: 6,
+                  background: "var(--gold-dim)",
+                  color: "var(--gold)",
+                  border: "1px solid var(--gold)",
+                  cursor: "pointer",
+                }}
+              >
+                {availableDepts.map((d) => (
+                  <option key={d} value={d}>{d === "All" ? "🌐 All Departments" : `${d}`}</option>
+                ))}
+              </select>
+            </div>
+
             <button className="btn ghost sm" onClick={toggleTheme} title="Toggle Dark/Light Mode" style={{ borderRadius: 20, padding: "4px 12px" }}>
               {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
             </button>
             <span className={`pill ${isAdmin ? "gold" : isGlobalReader ? "amber" : "blue"}`}>
-              {isAdmin ? "Admin" : isGlobalReader ? "Global Reader" : "Employee"}
+              {roleBadgeText}
             </span>
             <div className="avatar" title={profile.email}>{initials}</div>
           </div>

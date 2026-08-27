@@ -5,11 +5,13 @@ import Shell from "@/components/Shell";
 import { Card, Empty, Kpi, GroupedBars } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
 import { money, moneyShort, currentYear, csvDownload } from "@/lib/format";
 
 export default function PlanningPage() {
   const { profile } = useAuth();
-  const isAdmin = profile?.role === "admin";
+  const { dept } = useDept();
+  const isAdmin = profile?.role === "admin" || profile?.role === "dept_admin";
   const [planYear, setPlanYear] = useState(currentYear() + 1);
   const [categories, setCategories] = useState([]);
   const [summary, setSummary] = useState([]);
@@ -24,11 +26,19 @@ export default function PlanningPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
+    let planQuery = supabase.from("it_plan_lines").select("*").eq("plan_year", planYear);
+
+    if (dept !== "All") {
+      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
+      planQuery = planQuery.or(`department.eq.${dept},department.is.null`);
+    }
+
     const [c, s, a, p] = await Promise.all([
-      supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order"),
+      catQuery,
       supabase.from("v_it_budget_summary").select("*").in("budget_year", [planYear - 1, planYear - 2]),
       supabase.from("it_assets").select("category_id,scope,line_total,license_end,amc_end,replacement_due,status"),
-      supabase.from("it_plan_lines").select("*").eq("plan_year", planYear),
+      planQuery,
     ]);
     setCategories(c.data || []);
     setSummary(s.data || []);
@@ -43,7 +53,7 @@ export default function PlanningPage() {
     setDraft(d);
     setDraftNotes(dn);
     setLoading(false);
-  }, [planYear]);
+  }, [planYear, dept]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -145,13 +155,15 @@ export default function PlanningPage() {
   async function save() {
     setSaving(true);
     setMsg(null);
+    const targetDept = dept === "All" ? "IT" : dept;
     const payload = rows.map((r) => ({
       plan_year: planYear, category_id: r.category_id, scope: r.scope,
       planned_amount: Number(draft[r.key] || 0),
       basis: `Prior-year actual ${Math.round(r.curActual)}; committed renewals ${Math.round(r.committed)}`,
       notes: draftNotes[r.key] || null,
+      department: targetDept,
     }));
-    const { error } = await supabase.from("it_plan_lines").upsert(payload, { onConflict: "plan_year,category_id,scope" });
+    const { error } = await supabase.from("it_plan_lines").upsert(payload, { onConflict: "plan_year,category_id,scope,department" });
     setSaving(false);
     setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Proposal for ${planYear} saved.` });
     if (!error) load();
@@ -159,12 +171,14 @@ export default function PlanningPage() {
 
   async function promote() {
     if (!confirm(`Copy the ${planYear} proposal into the approved budget for ${planYear}?`)) return;
+    const targetDept = dept === "All" ? "IT" : dept;
     const payload = rows.map((r) => ({
       budget_year: planYear, category_id: r.category_id, scope: r.scope,
       amount: Number(draft[r.key] || 0),
       notes: draftNotes[r.key] || `Approved from ${planYear} proposal`,
+      department: targetDept,
     }));
-    const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope" });
+    const { error } = await supabase.from("it_budgets").upsert(payload, { onConflict: "budget_year,category_id,scope,department" });
     setMsg(error ? { t: "err", m: error.message } : { t: "ok", m: `Approved budget for ${planYear} created. See Budget vs Actual.` });
   }
 

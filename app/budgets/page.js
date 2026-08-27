@@ -5,9 +5,11 @@ import Shell from "@/components/Shell";
 import { Card, Progress, Empty, Modal } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
 import { money, currentYear, csvDownload } from "@/lib/format";
 
 function isIncludedInBudget(a) {
+  if (!a) return true;
   if (a.remarks && a.remarks.includes("[INCLUDED_IN_IT_BUDGET]")) return true;
   if (a.remarks && a.remarks.includes("[EXCLUDED_FROM_BUDGET]")) return false;
   if (a.include_in_budget === false) return false;
@@ -18,7 +20,8 @@ function isIncludedInBudget(a) {
 
 export default function BudgetsPage() {
   const { profile } = useAuth();
-  const isAdmin = profile?.role === "admin";
+  const { dept } = useDept();
+  const isAdmin = profile?.role === "admin" || profile?.role === "dept_admin";
   const [year, setYear] = useState(currentYear());
   const [typeFilter, setTypeFilter] = useState("all");
   const [categories, setCategories] = useState([]);
@@ -35,9 +38,17 @@ export default function BudgetsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    let catQuery = supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order");
+    let budgetQuery = supabase.from("it_budgets").select("*").eq("budget_year", year);
+
+    if (dept !== "All") {
+      catQuery = catQuery.or(`department.eq.${dept},department.is.null`);
+      budgetQuery = budgetQuery.or(`department.eq.${dept},department.is.null`);
+    }
+
     const [c, s, a, v] = await Promise.all([
-      supabase.from("it_categories").select("*").eq("is_active", true).order("sort_order"),
-      supabase.from("it_budgets").select("*").eq("budget_year", year),
+      catQuery,
+      budgetQuery,
       supabase.from("it_assets").select("line_total,scope,category_id,remarks,it_categories(name)").eq("budget_year", year),
       supabase.from("it_budget_versions").select("*").eq("budget_year", year).order("version_number", { ascending: false }),
     ]);
@@ -187,9 +198,10 @@ export default function BudgetsPage() {
               .eq("id", oldRow.id);
             if (updErr) throw updErr;
           } else if (amount > 0 || notesVal) {
+            const targetDept = dept === "All" ? "IT" : dept;
             const { error: insErr } = await supabase
               .from("it_budgets")
-              .insert({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal });
+              .insert({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal, department: targetDept });
             if (insErr) throw insErr;
           }
         }

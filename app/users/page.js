@@ -6,6 +6,7 @@ import { Card, Field, Modal } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
 import { dateStr } from "@/lib/format";
+import { DEPARTMENTS } from "@/lib/department";
 
 export default function UsersPage() {
   const { profile } = useAuth();
@@ -26,13 +27,19 @@ export default function UsersPage() {
 
   async function create() {
     setMsg(null);
-    const { email, full_name, role, pwd } = creating;
+    const { email, full_name, role, department, pwd } = creating;
     if (!email.trim() || !full_name.trim()) return setMsg({ t: "err", m: "Name and email are required." });
     if (pwd.length < 8) return setMsg({ t: "err", m: "Temporary password must be at least 8 characters." });
     const { error } = await supabase.rpc("it_admin_create_user", {
       p_email: email.trim(), p_full_name: full_name.trim(), p_role: role, p_temp_password: pwd,
     });
     if (error) return setMsg({ t: "err", m: error.message });
+
+    // Update department if specified
+    if (department) {
+      await supabase.from("it_users").update({ department }).eq("email", email.trim());
+    }
+
     setCreating(null);
     setMsg({ t: "ok", m: `${email} created. Share the temporary password — they must change it at first sign-in.` });
     load();
@@ -58,10 +65,10 @@ export default function UsersPage() {
 
   return (
     <Shell
-      title="Users"
-      subtitle="Admins maintain data; viewers get read-only dashboards"
+      title="Users & Department Access"
+      subtitle="Assign global or department-level admin and reader permissions"
       actions={
-        <button className="btn sm" onClick={() => setCreating({ email: "", full_name: "", role: "viewer", pwd: "" })}>
+        <button className="btn sm" onClick={() => setCreating({ email: "", full_name: "", role: "dept_admin", department: "HR", pwd: "" })}>
           + New user
         </button>
       }
@@ -72,19 +79,48 @@ export default function UsersPage() {
         {loading ? <div className="loading">Loading…</div> : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Password</th><th>Status</th><th>Created</th><th /></tr></thead>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Department Access</th>
+                  <th>Role</th>
+                  <th>Password</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th />
+                </tr>
+              </thead>
               <tbody>
                 {rows.map((u) => (
                   <tr key={u.id}>
                     <td style={{ fontWeight: 600 }}>{u.full_name}{u.id === profile?.id && <span className="pill grey" style={{ marginLeft: 8 }}>you</span>}</td>
                     <td style={{ color: "var(--muted)" }}>{u.email}</td>
                     <td>
-                      <select value={u.role} disabled={u.id === profile?.id}
-                        onChange={(e) => update(u, { role: e.target.value })} style={{ width: 160, padding: "5px 8px" }}>
-                        <option value="admin">Admin (Full Access)</option>
+                      <select
+                        value={u.department || "IT"}
+                        disabled={u.id === profile?.id}
+                        onChange={(e) => update(u, { department: e.target.value })}
+                        style={{ width: 140, padding: "5px 8px", fontSize: 12 }}
+                      >
+                        <option value="All">🌐 All Departments</option>
+                        {DEPARTMENTS.map((d) => (
+                          <option key={d} value={d}>{d} Dept</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={u.role}
+                        disabled={u.id === profile?.id}
+                        onChange={(e) => update(u, { role: e.target.value })}
+                        style={{ width: 170, padding: "5px 8px", fontSize: 12 }}
+                      >
+                        <option value="admin">Global Admin (Full Access)</option>
+                        <option value="dept_admin">Dept Admin (Full Dept Access)</option>
                         <option value="global_reader">Global Reader (View All)</option>
-                        <option value="viewer">Viewer (Read-Only)</option>
-                        <option value="employee">Employee (Restricted)</option>
+                        <option value="viewer">Dept Reader (View Dept Only)</option>
+                        <option value="employee">Employee (My Assets Only)</option>
                       </select>
                     </td>
                     <td>
@@ -113,15 +149,24 @@ export default function UsersPage() {
       </Card>
 
       {creating && (
-        <Modal title="New user" onClose={() => setCreating(null)}>
+        <Modal title="New user account" onClose={() => setCreating(null)}>
           <div className="stack">
             <Field label="Full name *"><input value={creating.full_name} onChange={(e) => setCreating({ ...creating, full_name: e.target.value })} /></Field>
             <Field label="Email *"><input type="email" value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} /></Field>
+            <Field label="Department Access">
+              <select value={creating.department || "IT"} onChange={(e) => setCreating({ ...creating, department: e.target.value })}>
+                <option value="All">🌐 All Departments (Global)</option>
+                {DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>{d} Department</option>
+                ))}
+              </select>
+            </Field>
             <Field label="Role">
               <select value={creating.role} onChange={(e) => setCreating({ ...creating, role: e.target.value })}>
-                <option value="global_reader">Global Reader — Read-only access to all data</option>
-                <option value="viewer">Viewer — Read-only dashboards</option>
-                <option value="admin">Admin — Full access & modifications</option>
+                <option value="dept_admin">Department Admin — Manage invoices, categories, vendors & budget for department</option>
+                <option value="admin">Global Admin — Manage all departments</option>
+                <option value="global_reader">Global Reader — Read-only access to all departments</option>
+                <option value="viewer">Department Reader — Read-only access to assigned department</option>
                 <option value="employee">Employee — Restricted to assigned assets</option>
               </select>
             </Field>
