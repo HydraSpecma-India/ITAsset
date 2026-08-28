@@ -19,6 +19,11 @@ export default function UsersPage() {
   const [resetting, setResetting] = useState(null);
   const [savingPerms, setSavingPerms] = useState(false);
 
+  // Bulk Grid Edit Mode State
+  const [gridMode, setGridMode] = useState(false);
+  const [gridRows, setGridRows] = useState([]);
+  const [savingGrid, setSavingGrid] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase.from("it_users").select("*").order("created_at");
@@ -27,6 +32,56 @@ export default function UsersPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  function enableGridMode() {
+    setGridRows(rows.map((r) => ({ ...r })));
+    setGridMode(true);
+  }
+
+  function handleGridChange(id, field, value) {
+    setGridRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
+    );
+  }
+
+  async function saveGridChanges() {
+    setSavingGrid(true);
+    setMsg(null);
+    let errCount = 0;
+    for (const r of gridRows) {
+      const orig = rows.find((o) => o.id === r.id);
+      if (!orig) continue;
+      if (
+        r.full_name !== orig.full_name ||
+        r.email !== orig.email ||
+        r.department !== orig.department ||
+        r.role !== orig.role ||
+        r.is_active !== orig.is_active ||
+        r.must_change_password !== orig.must_change_password
+      ) {
+        const { error } = await supabase
+          .from("it_users")
+          .update({
+            full_name: r.full_name.trim(),
+            email: r.email.trim().toLowerCase(),
+            department: r.department,
+            role: r.role,
+            is_active: r.is_active,
+            must_change_password: r.must_change_password,
+          })
+          .eq("id", r.id);
+        if (error) errCount++;
+      }
+    }
+    setSavingGrid(false);
+    if (errCount > 0) {
+      setMsg({ t: "err", m: `Bulk save finished with ${errCount} errors.` });
+    } else {
+      setMsg({ t: "ok", m: "All user changes saved successfully!" });
+      setGridMode(false);
+      load();
+    }
+  }
 
   async function create() {
     setMsg(null);
@@ -124,25 +179,136 @@ export default function UsersPage() {
       title="Users & Department Access"
       subtitle="Configure primary department roles and granular cross-department permissions"
       actions={
-        <button
-          className="btn sm"
-          onClick={() => setCreating({
-            email: "",
-            full_name: "",
-            role: "dept_admin",
-            department: "IT",
-            pwd: "",
-            dept_permissions: {},
-          })}
-        >
-          + New user
-        </button>
+        <div className="btn-row">
+          {gridMode ? (
+            <>
+              <button className="btn ghost sm" onClick={() => setGridMode(false)}>
+                ✕ Cancel Grid Edit
+              </button>
+              <button className="btn sm" onClick={saveGridChanges} disabled={savingGrid}>
+                {savingGrid ? "💾 Saving All…" : "💾 Save All Changes"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn ghost sm" onClick={enableGridMode} title="Edit multiple users at once in Excel-like grid">
+                ✏️ Bulk Edit Grid
+              </button>
+              <button
+                className="btn sm"
+                onClick={() => setCreating({
+                  email: "",
+                  full_name: "",
+                  role: "dept_admin",
+                  department: "IT",
+                  pwd: "",
+                  dept_permissions: {},
+                })}
+              >
+                + New user
+              </button>
+            </>
+          )}
+        </div>
       }
     >
       {msg && <div className={`alert ${msg.t}`}>{msg.m}</div>}
 
-      <Card title={`${rows.length} account${rows.length === 1 ? "" : "s"}`}>
-        {loading ? <div className="loading">Loading…</div> : (
+      <Card
+        title={gridMode ? "✏️ Bulk Edit Grid Mode (Editing all users)" : `${rows.length} account${rows.length === 1 ? "" : "s"}`}
+        hint={gridMode ? "Edit user fields in grid cells and click 'Save All Changes' when finished" : "Click 'Bulk Edit Grid' to edit multiple users simultaneously"}
+      >
+        {loading ? <div className="loading">Loading…</div> : gridMode ? (
+          /* Bulk Edit Grid View */
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Full Name</th>
+                  <th>Email</th>
+                  <th>Primary Department</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Password Reset</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gridRows.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <input
+                        type="text"
+                        value={r.full_name}
+                        onChange={(e) => handleGridChange(r.id, "full_name", e.target.value)}
+                        style={{ padding: "4px 8px", fontSize: 12, width: 160 }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="email"
+                        value={r.email}
+                        onChange={(e) => handleGridChange(r.id, "email", e.target.value)}
+                        style={{ padding: "4px 8px", fontSize: 12, width: 190 }}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        value={r.department || "IT"}
+                        onChange={(e) => handleGridChange(r.id, "department", e.target.value)}
+                        style={{ padding: "4px 8px", fontSize: 12, width: 140 }}
+                      >
+                        <option value="All">🌐 All Departments</option>
+                        {activeDepts.map((d) => (
+                          <option key={d} value={d}>{d} Dept</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={r.role}
+                        onChange={(e) => handleGridChange(r.id, "role", e.target.value)}
+                        style={{ padding: "4px 8px", fontSize: 12, width: 170 }}
+                      >
+                        <option value="admin">Global Admin (Full Access)</option>
+                        <option value="dept_admin">Dept Admin (Full Access)</option>
+                        <option value="global_reader">Global Reader (View All)</option>
+                        <option value="viewer">Dept Reader (View Only)</option>
+                        <option value="employee">Employee (My Assets Only)</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        value={r.is_active ? "true" : "false"}
+                        onChange={(e) => handleGridChange(r.id, "is_active", e.target.value === "true")}
+                        style={{ padding: "4px 8px", fontSize: 12, width: 100 }}
+                      >
+                        <option value="true">✓ Active</option>
+                        <option value="false">✕ Disabled</option>
+                      </select>
+                    </td>
+                    <td>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={!!r.must_change_password}
+                          onChange={(e) => handleGridChange(r.id, "must_change_password", e.target.checked)}
+                        />
+                        <span>Require Change</span>
+                      </label>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button className="btn ghost sm" onClick={() => openPermsModal(r)} title="Configure Cross-Department Access">
+                        🔑 Perms
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* Normal View */
           <div className="table-wrap">
             <table>
               <thead>
