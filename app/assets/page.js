@@ -9,9 +9,8 @@ import { useAuth } from "@/lib/session";
 import { useDept } from "@/lib/department";
 
 export default function AssetsPage() {
-  const { profile } = useAuth();
-  const { dept } = useDept();
-  const isAdmin = profile?.role === "admin";
+  const { dept, isDeptAdmin } = useDept();
+  const isAdmin = isDeptAdmin;
   const isEmployee = profile?.role === "employee";
 
   const [rows, setRows] = useState([]);

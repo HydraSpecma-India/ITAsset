@@ -34,9 +34,8 @@ const MONTH_OPTIONS = [
 ];
 
 export default function InvoicesPage() {
-  const { profile } = useAuth();
-  const { dept } = useDept();
-  const isAdmin = profile?.role === "admin" || profile?.role === "dept_admin";
+  const { dept, isDeptAdmin } = useDept();
+  const isAdmin = isDeptAdmin;
 
   const [invoices, setInvoices] = useState([]);
   const [categories, setCategories] = useState([]);

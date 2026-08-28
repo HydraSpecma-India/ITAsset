@@ -20,8 +20,8 @@ function isIncludedInBudget(a) {
 
 export default function BudgetsPage() {
   const { profile } = useAuth();
-  const { dept } = useDept();
-  const isAdmin = profile?.role === "admin" || profile?.role === "dept_admin";
+  const { dept, isDeptAdmin } = useDept();
+  const canEdit = isDeptAdmin;
   const [year, setYear] = useState(currentYear());
   const [typeFilter, setTypeFilter] = useState("all");
   const [categories, setCategories] = useState([]);
@@ -323,7 +323,7 @@ export default function BudgetsPage() {
     return (
       <>
         <td className="num" style={{ minWidth: 118 }}>
-          {isAdmin ? (
+          {canEdit ? (
             <input
               type="number" min="0" step="1000" className="mono"
               style={{ textAlign: "right", padding: "6px 8px" }}
@@ -337,7 +337,7 @@ export default function BudgetsPage() {
         <td className="num mono" style={{ color: bal < 0 ? "var(--red)" : "var(--text)" }}>{money(bal)}</td>
         <td style={{ width: 80 }}><Progress pct={pct} /></td>
         <td style={{ minWidth: 160 }}>
-          {isAdmin ? (
+          {canEdit ? (
             <input
               type="text"
               style={{ padding: "4px 8px", fontSize: 12, width: "100%" }}
@@ -464,12 +464,12 @@ export default function BudgetsPage() {
             📜 Version History ({versions.length ? `v${versions[0].version_number}.0` : "v1.0"})
           </button>
           <button className="btn ghost sm" onClick={exportCsv}>Export CSV</button>
-          {isAdmin && <button className="btn sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save budget"}</button>}
+          {canEdit && <button className="btn sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save budget"}</button>}
         </>
       }
     >
       {msg && <div className={`alert ${msg.t}`}>{msg.m}</div>}
-      {!isAdmin && <div className="alert info">You have read-only access. Budget figures and remarks can only be edited by an administrator.</div>}
+      {!canEdit && <div className="alert info">You have View-Only access for {dept}. Budget figures and remarks can only be edited by an administrator for this department.</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
         <div style={{ padding: 14, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: 8 }}>

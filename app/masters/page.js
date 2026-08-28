@@ -8,9 +8,8 @@ import { useAuth } from "@/lib/session";
 import { useDept } from "@/lib/department";
 
 export default function MastersPage() {
-  const { profile } = useAuth();
   const { dept, isDeptAdmin } = useDept();
-  const isAdmin = profile?.role === "admin" || profile?.role === "dept_admin";
+  const isAdmin = isDeptAdmin;
 
   const [tab, setTab] = useState("categories");
   const [categories, setCategories] = useState([]);
