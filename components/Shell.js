@@ -38,17 +38,27 @@ export default function Shell({ title, subtitle, actions, children }) {
   const [newDeptForm, setNewDeptForm] = useState({ name: "", code: "", description: "" });
   const [editingDeptId, setEditingDeptId] = useState(null);
   const [editingDeptForm, setEditingDeptForm] = useState({});
-  const [deptModalMsg, setDeptModalMsg] = useState(null);
+  const [deptSaving, setDeptSaving] = useState(false);
 
   const loadDeptRows = useCallback(async () => {
     setDeptLoading(true);
-    const { data } = await supabase
-      .from("it_budget_departments")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
-    setDeptListRows(data || []);
-    setDeptLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("it_budget_departments")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+
+      if (error) {
+        setDeptModalMsg({ type: "danger", text: "Failed to load budget departments: " + error.message });
+      } else {
+        setDeptListRows(data || []);
+      }
+    } catch (err) {
+      setDeptModalMsg({ type: "danger", text: "Error loading budget departments." });
+    } finally {
+      setDeptLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -61,6 +71,7 @@ export default function Shell({ title, subtitle, actions, children }) {
     e.preventDefault();
     if (!newDeptForm.name.trim()) return;
     setDeptModalMsg(null);
+    setDeptSaving(true);
 
     const payload = {
       name: newDeptForm.name.trim(),
@@ -70,14 +81,20 @@ export default function Shell({ title, subtitle, actions, children }) {
       is_active: true,
     };
 
-    const { error } = await supabase.from("it_budget_departments").insert(payload);
-    if (error) {
-      setDeptModalMsg({ type: "danger", text: error.message });
-    } else {
-      setNewDeptForm({ name: "", code: "", description: "" });
-      setDeptModalMsg({ type: "success", text: `Budget Department "${payload.name}" created!` });
-      loadDeptRows();
-      if (refreshDepartments) refreshDepartments();
+    try {
+      const { error } = await supabase.from("it_budget_departments").insert(payload);
+      if (error) {
+        setDeptModalMsg({ type: "danger", text: error.message });
+      } else {
+        setNewDeptForm({ name: "", code: "", description: "" });
+        setDeptModalMsg({ type: "success", text: `Budget Department "${payload.name}" created successfully!` });
+        await loadDeptRows();
+        if (refreshDepartments) refreshDepartments();
+      }
+    } catch (err) {
+      setDeptModalMsg({ type: "danger", text: "Error creating budget department." });
+    } finally {
+      setDeptSaving(false);
     }
   }
 
@@ -322,8 +339,8 @@ export default function Shell({ title, subtitle, actions, children }) {
                   style={{ padding: "5px 8px", fontSize: 12 }}
                 />
               </div>
-              <button type="submit" className="btn sm" style={{ width: "100%", padding: "6px" }}>
-                + Create Budget Department
+              <button type="submit" className="btn sm" disabled={deptSaving} style={{ width: "100%", padding: "6px" }}>
+                {deptSaving ? "⏳ Creating…" : "+ Create Budget Department"}
               </button>
             </form>
 
