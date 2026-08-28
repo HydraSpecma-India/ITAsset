@@ -175,10 +175,17 @@ export default function Shell({ title, subtitle, actions, children }) {
     .split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
   const deptLabel = profile.department && profile.department !== "All" ? `${profile.department}` : "";
-  const roleBadgeText = isAdmin
-    ? (isGlobalAdmin ? "Global Admin" : `${deptLabel || "Dept"} Admin`)
+  const currentDeptPerm = profile?.dept_permissions?.[dept];
+  const roleBadgeText = isGlobalAdmin
+    ? "Global Admin"
     : isGlobalReader
     ? "Global Reader"
+    : currentDeptPerm === "admin"
+    ? `${dept} Admin`
+    : currentDeptPerm === "viewer"
+    ? `${dept} Reader (View Only)`
+    : isAdmin
+    ? `${deptLabel || "Dept"} Admin`
     : isEmployee
     ? "Employee"
     : (deptLabel ? `${deptLabel} Reader` : "Reader");

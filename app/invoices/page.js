@@ -58,12 +58,7 @@ export default function InvoicesPage() {
   const load = useCallback(async () => {
     if (!profile) return;
 
-    const isGlobalUser =
-      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
-      profile?.role === "global_reader" ||
-      profile?.role === "viewer";
-
-    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+    const activeDept = dept || profile?.department || "IT";
 
     setLoading(true);
     let invQuery = supabase.from("v_it_invoice_totals").select("*").order("invoice_date", { ascending: false });

@@ -22,12 +22,7 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     if (!profile) return;
 
-    const isGlobalUser =
-      (profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT")) ||
-      profile?.role === "global_reader" ||
-      profile?.role === "viewer";
-
-    const activeDept = isGlobalUser ? dept : (profile?.department || "IT");
+    const activeDept = dept || profile?.department || "IT";
 
     setLoading(true);
     let cQuery = supabase.from("it_categories").select("*").order("sort_order");
