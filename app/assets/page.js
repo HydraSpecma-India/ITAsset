@@ -1338,15 +1338,10 @@ export default function AssetsPage() {
                   type="button"
                   className="btn sm"
                   style={{ background: "var(--gold)", color: "#000", fontWeight: 700, padding: "9px 10px", fontSize: 12 }}
-                  onClick={() => {
-                    window.open(
-                      "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets?$select=FixedAssetNumber,FixedAssetGroupId,Name,SerialNumber",
-                      "D365DataWindow",
-                      "width=1024,height=768,scrollbars=yes,resizable=yes"
-                    );
-                  }}
+                  onClick={autoFetchD365Directly}
+                  disabled={erpBusy}
                 >
-                  ⚡ Step 2: Open Filtered OData Feed ↗
+                  {erpBusy ? "⚡ Auto-Fetching & Syncing…" : "⚡ Step 2: Auto-Fetch, Auto-Close & Sync ↗"}
                 </button>
               </div>
             </div>
