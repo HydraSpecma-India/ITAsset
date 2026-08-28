@@ -89,8 +89,8 @@ export default function LoginPage() {
       <div className="card auth-card">
         <div className="auth-head">
           <div className="brand-mark">HS</div>
-          <h1>IT Budget Monitor</h1>
-          <p>Purchase, asset & budget control · HydraSpecma</p>
+          <h1>HydraSpecma India Monitor</h1>
+          <p>Purchase, asset & budget control · HydraSpecma India</p>
         </div>
 
         {err && <div className="alert err">{err}</div>}
@@ -98,7 +98,7 @@ export default function LoginPage() {
         <form onSubmit={submit} className="stack">
           <Field label="Email">
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="itadmin@hydraspecma.com" required autoComplete="username" />
+              placeholder="user@hydraspecma.com" required autoComplete="username" />
           </Field>
           <Field label="Password">
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
@@ -108,10 +108,6 @@ export default function LoginPage() {
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
-
-        <p style={{ fontSize: 11.5, color: "var(--faint)", textAlign: "center", marginTop: 18, marginBottom: 0 }}>
-          First-time users must set a new password after signing in.
-        </p>
       </div>
     </div>
   );
