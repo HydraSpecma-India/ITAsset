@@ -230,9 +230,9 @@ tfoot td { padding: 10px 11px; border-top: 1px solid var(--gold); font-weight: 7
 .spacer { flex: 1; }
 
 /* Modal Styles with Scroll Fix */
-.modal-back {
+.modal-back, .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.78); backdrop-filter: blur(6px);
-  display: flex; align-items: center; justify-content: center; padding: 24px 16px; z-index: 999; overflow: hidden;
+  display: flex; align-items: center; justify-content: center; padding: 24px 16px; z-index: 99999; overflow: hidden;
 }
 .modal {
   width: 100%; max-width: 940px; max-height: calc(100vh - 48px);

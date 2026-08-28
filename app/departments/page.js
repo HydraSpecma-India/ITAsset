@@ -253,85 +253,87 @@ export default function DepartmentsPage() {
       </Card>
 
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
-          <div className="modal" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
+        <div className="modal-back" onClick={() => setModalOpen(false)}>
+          <div className="modal narrow" onClick={(e) => e.stopPropagation()}>
+            <div className="card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ margin: 0 }}>
                 {editDept ? "✏️ Edit Budget Department" : "➕ Create New Budget Department"}
               </h3>
               <button className="btn ghost sm" onClick={() => setModalOpen(false)}>✕</button>
             </div>
 
-            {msg && (
-              <div className={`alert ${msg.type}`} style={{ marginTop: 12, marginBottom: 12 }}>
-                {msg.text}
-              </div>
-            )}
-
-            <form onSubmit={handleSave} style={{ marginTop: 14 }}>
-              <div className="grid g2" style={{ marginBottom: 12 }}>
-                <div className="field">
-                  <label className="field-label">Department Name *</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Finance"
-                    required
-                  />
+            <div className="card-body">
+              {msg && (
+                <div className={`alert ${msg.type}`} style={{ marginBottom: 12 }}>
+                  {msg.text}
                 </div>
-                <div className="field">
-                  <label className="field-label">Code (Short) *</label>
-                  <input
-                    type="text"
-                    value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                    placeholder="e.g. FINN"
-                    required
-                  />
-                </div>
-              </div>
+              )}
 
-              <div className="field" style={{ marginBottom: 12 }}>
-                <label className="field-label">Description</label>
-                <textarea
-                  rows={3}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="e.g. Finance & Accounting Budget"
-                />
-              </div>
-
-              <div className="grid g2" style={{ marginBottom: 16, alignItems: "center" }}>
-                <div className="field">
-                  <label className="field-label">Sort Order</label>
-                  <input
-                    type="number"
-                    value={formData.sort_order}
-                    onChange={(e) => setFormData({ ...formData, sort_order: Number(e.target.value) })}
-                  />
-                </div>
-                <div className="field" style={{ paddingTop: 18 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <form onSubmit={handleSave}>
+                <div className="grid g2" style={{ marginBottom: 12 }}>
+                  <div className="field">
+                    <label className="field-label">Department Name *</label>
                     <input
-                      type="checkbox"
-                      checked={formData.is_active}
-                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="e.g. Finance"
+                      required
                     />
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>Active Department</span>
-                  </label>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Code (Short) *</label>
+                    <input
+                      type="text"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                      placeholder="e.g. FINN"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="modal-footer">
-                <button type="button" className="btn ghost sm" onClick={() => setModalOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn sm" disabled={saving}>
-                  {saving ? "Saving…" : "💾 Save Department"}
-                </button>
-              </div>
-            </form>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label className="field-label">Description</label>
+                  <textarea
+                    rows={3}
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="e.g. Finance & Accounting Budget"
+                  />
+                </div>
+
+                <div className="grid g2" style={{ marginBottom: 16, alignItems: "center" }}>
+                  <div className="field">
+                    <label className="field-label">Sort Order</label>
+                    <input
+                      type="number"
+                      value={formData.sort_order}
+                      onChange={(e) => setFormData({ ...formData, sort_order: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="field" style={{ paddingTop: 18 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.is_active}
+                        onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                      />
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>Active Department</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 12, borderTop: "1px solid var(--line-soft)" }}>
+                  <button type="button" className="btn ghost sm" onClick={() => setModalOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn sm" disabled={saving}>
+                    {saving ? "Saving…" : "💾 Save Department"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
