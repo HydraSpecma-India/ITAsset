@@ -195,6 +195,7 @@ export default function AssetsPage() {
   const [erpResult, setErpResult] = useState(null);
 
   const [d365MasterList, setD365MasterList] = useState([]);
+  const [lastSyncedClip, setLastSyncedClip] = useState("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -204,6 +205,36 @@ export default function AssetsPage() {
       } catch (err) {}
     }
   }, []);
+
+  useEffect(() => {
+    let timer;
+    if (erpModalOpen) {
+      timer = setInterval(async () => {
+        try {
+          if (navigator.clipboard && navigator.clipboard.readText) {
+            const clipText = await navigator.clipboard.readText();
+            if (
+              clipText &&
+              (clipText.includes("FixedAssetNumber") || clipText.includes("@odata.context")) &&
+              clipText !== lastSyncedClip
+            ) {
+              setLastSyncedClip(clipText);
+              setErpForm((prev) => ({ ...prev, jsonText: clipText }));
+              let parsed = [];
+              try {
+                const raw = JSON.parse(clipText.trim());
+                parsed = Array.isArray(raw) ? raw : (raw.value || []);
+              } catch (e) {}
+              if (parsed.length > 0) {
+                await processD365ItemsAndSync(parsed, "Auto Clipboard Detection");
+              }
+            }
+          }
+        } catch (err) {}
+      }, 1200);
+    }
+    return () => clearInterval(timer);
+  }, [erpModalOpen, lastSyncedClip]);
 
   async function handleD365Sync(e) {
     if (e) e.preventDefault();
@@ -1207,12 +1238,13 @@ export default function AssetsPage() {
 
             <div style={{ background: "rgba(255, 204, 0, 0.08)", border: "1px solid var(--gold)", borderRadius: 8, padding: 14, marginTop: 12, marginBottom: 16 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: "var(--gold)", marginBottom: 6 }}>
-                📌 D365FO Filtered Single Sign-On Sync Workflow:
+                📌 D365FO Auto-Detect & Auto-Sync Workflow:
               </div>
               <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--fg)", lineHeight: 1.6 }}>
-                <li>Click <strong>Step 1</strong> to log in to D365FO with your HydraSpecma Microsoft credentials.</li>
-                <li>Click <strong>Step 2</strong> to auto-fetch or open the optimized filtered OData feed (<code>FixedAssetNumber, FixedAssetGroupId, Name, SerialNumber</code>).</li>
-                <li>Fetched assets automatically populate the <strong>ERP Asset Selector dropdown</strong> in the Asset Register!</li>
+                <li>Click <strong>Step 1</strong> to log in to D365FO with your Microsoft credentials.</li>
+                <li>Click <strong>Step 2</strong> to open the <code>FixedAssets</code> OData feed in your browser.</li>
+                <li>On that tab, press <code>Ctrl+A</code> (Select All) then <code>Ctrl+C</code> (Copy).</li>
+                <li><strong>Zero Paste Required:</strong> The app automatically detects your copy, extracts all asset numbers, and auto-syncs the database!</li>
               </ol>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
@@ -1234,9 +1266,15 @@ export default function AssetsPage() {
                   type="button"
                   className="btn sm"
                   style={{ background: "var(--gold)", color: "#000", fontWeight: 700, padding: "9px 10px", fontSize: 12 }}
-                  onClick={autoFetchD365Directly}
+                  onClick={() => {
+                    window.open(
+                      "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets?$select=FixedAssetNumber,FixedAssetGroupId,Name,SerialNumber",
+                      "D365DataWindow",
+                      "width=1024,height=768,scrollbars=yes,resizable=yes"
+                    );
+                  }}
                 >
-                  ⚡ Step 2: Auto-Fetch Filtered Data ↗
+                  ⚡ Step 2: Open Filtered OData Feed ↗
                 </button>
               </div>
             </div>
