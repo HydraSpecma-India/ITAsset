@@ -34,6 +34,7 @@ const MONTH_OPTIONS = [
 ];
 
 export default function InvoicesPage() {
+  const { profile } = useAuth();
   const { dept, isDeptAdmin } = useDept();
   const isAdmin = isDeptAdmin;
 

@@ -9,6 +9,7 @@ import { useDept } from "@/lib/department";
 import { money, moneyShort, currentYear, csvDownload } from "@/lib/format";
 
 export default function PlanningPage() {
+  const { profile } = useAuth();
   const { dept, isDeptAdmin } = useDept();
   const isAdmin = isDeptAdmin;
   const [planYear, setPlanYear] = useState(currentYear() + 1);
