@@ -268,14 +268,14 @@ export default function Shell({ title, subtitle, actions, children }) {
               </select>
 
               {isGlobalAdmin && (
-                <button
+                <Link
+                  href="/departments"
                   className="btn ghost sm"
-                  onClick={() => setManageDeptsModalOpen(true)}
                   style={{ padding: "2px 8px", fontSize: 11, color: "var(--gold)", borderColor: "var(--gold)", fontWeight: 700 }}
-                  title="Manage Budget Departments Pop-up"
+                  title="Open Departments Management Module"
                 >
                   ⚙️ Manage Depts
-                </button>
+                </Link>
               )}
             </div>
 
