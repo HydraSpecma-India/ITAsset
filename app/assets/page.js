@@ -266,7 +266,54 @@ export default function AssetsPage() {
       setErpMsg({ t: "ok", m: `Auto-pulled ${items.length} Fixed Assets directly from D365FO! Loaded into asset dropdown list.` });
     } catch (err) {
       window.open(filterUrl, "D365DataWindow", "width=1024,height=768,scrollbars=yes,resizable=yes");
-      setErpMsg({ t: "err", m: "Direct fetch requires SSO session in tab. Opened filtered OData tab; copy and paste JSON below." });
+      setErpMsg({ t: "err", m: "Direct fetch requires SSO session in tab. Opened filtered OData tab; press Ctrl+A, Ctrl+C then click '📋 One-Click Auto-Paste & Sync' below!" });
+    } finally {
+      setErpBusy(false);
+    }
+  }
+
+  async function pasteClipboardAndSync() {
+    setErpBusy(true);
+    setErpMsg(null);
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        throw new Error("Clipboard API not available in browser. Please paste into text area manually.");
+      }
+      const clipText = await navigator.clipboard.readText();
+      if (!clipText || !clipText.trim()) {
+        throw new Error("Clipboard is empty! Please select all (Ctrl+A) and copy (Ctrl+C) the D365 page text first.");
+      }
+      setErpForm((prev) => ({ ...prev, jsonText: clipText }));
+      
+      let parsed = [];
+      try {
+        const raw = JSON.parse(clipText.trim());
+        parsed = Array.isArray(raw) ? raw : (raw.value || []);
+      } catch (err) {
+        throw new Error("Clipboard text is not valid JSON. Make sure you copied full D365 page text.");
+      }
+
+      if (parsed.length > 0) {
+        setD365MasterList(parsed);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("itbm_d365_master", JSON.stringify(parsed));
+        }
+      }
+
+      const res = await fetch("/api/d365-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetDept: dept, syncMode: "manual", manualItems: parsed }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Sync failed");
+
+      setErpResult(data);
+      setErpMsg({ t: "ok", m: `Successfully auto-pasted & synced! Loaded ${parsed.length} D365 assets into master dropdown list and updated ${data.updatedCount} database items.` });
+      load();
+    } catch (err) {
+      setErpMsg({ t: "err", m: err.message || String(err) });
     } finally {
       setErpBusy(false);
     }
@@ -363,6 +410,8 @@ export default function AssetsPage() {
   function startInlineEdit(r) {
     setEditingId(r.id);
     setEditForm({
+      asset_no: r.asset_no || "",
+      asset_group_id: r.asset_group_id || "",
       category_id: r.category_id || "",
       scope: r.scope || "local",
       staff_name: r.staff_name || "",
@@ -384,6 +433,8 @@ export default function AssetsPage() {
   async function saveInlineEdit(r) {
     setSavingId(r.id);
     const updates = {
+      asset_no: editForm.asset_no ? editForm.asset_no.trim() : null,
+      asset_group_id: editForm.asset_group_id ? editForm.asset_group_id.trim() : null,
       category_id: editForm.category_id || null,
       scope: editForm.scope || "local",
       staff_name: editForm.staff_name || null,
@@ -836,7 +887,52 @@ export default function AssetsPage() {
                           </div>
                         </td>
                         <td>
-                          <span className="pill gold" style={{ fontSize: 11 }}>{r.asset_no || "—"}</span>
+                          {d365MasterList.length > 0 && (
+                            <select
+                              value={editForm.asset_no || ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const matched = d365MasterList.find((item) => (item.FixedAssetNumber || item.asset_no) === val);
+                                if (matched) {
+                                  setEditForm({
+                                    ...editForm,
+                                    asset_no: matched.FixedAssetNumber || matched.asset_no,
+                                    asset_group_id: matched.FixedAssetGroupId || matched.asset_group_id || editForm.asset_group_id,
+                                  });
+                                } else {
+                                  setEditForm({ ...editForm, asset_no: val });
+                                }
+                              }}
+                              style={{ padding: "3px 6px", fontSize: 11, width: 120, marginBottom: 4, border: "1px solid var(--gold)" }}
+                              title="Pick an ERP asset to auto-populate Asset No and Group ID"
+                            >
+                              <option value="">-- Pick D365 Asset --</option>
+                              {d365MasterList.map((item, idx) => {
+                                const num = item.FixedAssetNumber || item.asset_no;
+                                const grp = item.FixedAssetGroupId || item.asset_group_id || "";
+                                const name = item.Name || item.asset_name || "";
+                                return (
+                                  <option key={idx} value={num}>
+                                    {num} {grp ? `(${grp})` : ""} — {name.slice(0, 18)}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          )}
+                          <input
+                            type="text"
+                            placeholder="D365 Asset No"
+                            value={editForm.asset_no || ""}
+                            onChange={(e) => setEditForm({ ...editForm, asset_no: e.target.value })}
+                            style={{ padding: "4px 6px", fontSize: 12, width: 110 }}
+                          />
+                          <input
+                            type="text"
+                            placeholder="Group ID"
+                            value={editForm.asset_group_id || ""}
+                            onChange={(e) => setEditForm({ ...editForm, asset_group_id: e.target.value })}
+                            style={{ padding: "3px 6px", fontSize: 11, width: 110, marginTop: 2 }}
+                          />
                         </td>
                         <td>
                           <select
@@ -1075,16 +1171,27 @@ export default function AssetsPage() {
 
             <form onSubmit={handleD365Sync}>
               <div className="field" style={{ marginBottom: 12 }}>
-                <label className="field-label" style={{ fontWeight: 600 }}>
-                  Step 2: Paste D365FO FixedAssets OData Response or Screen Text
-                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label className="field-label" style={{ fontWeight: 600, margin: 0 }}>
+                    Step 2: D365FO OData Response Payload
+                  </label>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    style={{ background: "var(--gold)", color: "#000", fontWeight: 700, padding: "5px 12px", fontSize: 12 }}
+                    onClick={pasteClipboardAndSync}
+                    disabled={erpBusy}
+                    title="Automatically reads your clipboard (copied from Step 2 tab) and syncs database in 1 click!"
+                  >
+                    📋 One-Click Auto-Paste & Sync
+                  </button>
+                </div>
                 <textarea
-                  rows={7}
+                  rows={6}
                   value={erpForm.jsonText}
                   onChange={(e) => setErpForm({ ...erpForm, jsonText: e.target.value })}
-                  placeholder={`Paste D365 OData JSON here (e.g.):\n{\n  "value": [\n    {\n      "FixedAssetNumber": "FA-001928",\n      "FixedAssetGroupId": "COMP-HW",\n      "Name": "Dell Laptop 5540",\n      "SerialNumber": "SN-9812938"\n    }\n  ]\n}`}
+                  placeholder={`Click '📋 One-Click Auto-Paste & Sync' above, or paste D365 OData JSON here:\n{\n  "value": [\n    {\n      "FixedAssetNumber": "FA-001928",\n      "FixedAssetGroupId": "COMP-HW",\n      "Name": "Dell Laptop 5540",\n      "SerialNumber": "SN-9812938"\n    }\n  ]\n}`}
                   style={{ fontFamily: "monospace", fontSize: 12 }}
-                  required
                 />
               </div>
 
