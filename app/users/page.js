@@ -15,7 +15,9 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
   const [creating, setCreating] = useState(null);
+  const [editingPerms, setEditingPerms] = useState(null);
   const [resetting, setResetting] = useState(null);
+  const [savingPerms, setSavingPerms] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,21 +30,25 @@ export default function UsersPage() {
 
   async function create() {
     setMsg(null);
-    const { email, full_name, role, department, pwd } = creating;
+    const { email, full_name, role, department, dept_permissions, pwd } = creating;
     if (!email.trim() || !full_name.trim()) return setMsg({ t: "err", m: "Name and email are required." });
     if (pwd.length < 8) return setMsg({ t: "err", m: "Temporary password must be at least 8 characters." });
+
     const { error } = await supabase.rpc("it_admin_create_user", {
       p_email: email.trim(), p_full_name: full_name.trim(), p_role: role, p_temp_password: pwd,
     });
     if (error) return setMsg({ t: "err", m: error.message });
 
-    // Update department if specified
-    if (department) {
-      await supabase.from("it_users").update({ department }).eq("email", email.trim());
-    }
+    // Update department and multi-department permissions
+    const allowedDepts = Object.keys(dept_permissions || {}).filter((k) => dept_permissions[k] && dept_permissions[k] !== "none");
+    await supabase.from("it_users").update({
+      department: department || "IT",
+      dept_permissions: dept_permissions || {},
+      allowed_departments: allowedDepts,
+    }).eq("email", email.trim());
 
     setCreating(null);
-    setMsg({ t: "ok", m: `${email} created. Share the temporary password — they must change it at first sign-in.` });
+    setMsg({ t: "ok", m: `${email} created successfully. Share temporary password with user.` });
     load();
   }
 
@@ -54,7 +60,7 @@ export default function UsersPage() {
     });
     if (error) return setMsg({ t: "err", m: error.message });
     setResetting(null);
-    setMsg({ t: "ok", m: "Password reset. The user must set a new one at next sign-in." });
+    setMsg({ t: "ok", m: "Password reset successfully." });
     load();
   }
 
@@ -62,6 +68,41 @@ export default function UsersPage() {
     const { error } = await supabase.from("it_users").update(patch).eq("id", u.id);
     if (error) setMsg({ t: "err", m: error.message });
     load();
+  }
+
+  function openPermsModal(u) {
+    setEditingPerms({
+      ...u,
+      role: u.role || "dept_admin",
+      department: u.department || "IT",
+      dept_permissions: u.dept_permissions || {},
+    });
+  }
+
+  async function savePermsModal() {
+    if (!editingPerms) return;
+    setSavingPerms(true);
+    setMsg(null);
+
+    const perms = editingPerms.dept_permissions || {};
+    const allowedDepts = Object.keys(perms).filter((k) => perms[k] && perms[k] !== "none");
+
+    const { error } = await supabase.from("it_users").update({
+      role: editingPerms.role,
+      department: editingPerms.department,
+      dept_permissions: perms,
+      allowed_departments: allowedDepts,
+    }).eq("id", editingPerms.id);
+
+    setSavingPerms(false);
+
+    if (error) {
+      setMsg({ t: "err", m: "Failed to save permissions: " + error.message });
+    } else {
+      setEditingPerms(null);
+      setMsg({ t: "ok", m: `Permissions updated for ${editingPerms.email}` });
+      load();
+    }
   }
 
   const isGlobalAdmin = profile?.role === "admin" && (profile?.department === "All" || !profile?.department || profile?.department === "IT");
@@ -81,9 +122,19 @@ export default function UsersPage() {
   return (
     <Shell
       title="Users & Department Access"
-      subtitle="Assign global or department-level admin and reader permissions"
+      subtitle="Configure primary department roles and granular cross-department permissions"
       actions={
-        <button className="btn sm" onClick={() => setCreating({ email: "", full_name: "", role: "dept_admin", department: "HR", pwd: "" })}>
+        <button
+          className="btn sm"
+          onClick={() => setCreating({
+            email: "",
+            full_name: "",
+            role: "dept_admin",
+            department: "IT",
+            pwd: "",
+            dept_permissions: {},
+          })}
+        >
           + New user
         </button>
       }
@@ -96,73 +147,177 @@ export default function UsersPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Department Access</th>
-                  <th>Role</th>
-                  <th>Password</th>
+                  <th>Name & Email</th>
+                  <th>Primary Role</th>
+                  <th>Primary Dept</th>
+                  <th>Cross-Department Access</th>
                   <th>Status</th>
-                  <th>Created</th>
-                  <th />
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((u) => (
-                  <tr key={u.id}>
-                    <td style={{ fontWeight: 600 }}>{u.full_name}{u.id === profile?.id && <span className="pill grey" style={{ marginLeft: 8 }}>you</span>}</td>
-                    <td style={{ color: "var(--muted)" }}>{u.email}</td>
-                    <td>
-                      <select
-                        value={u.department || "IT"}
-                        disabled={u.id === profile?.id}
-                        onChange={(e) => update(u, { department: e.target.value })}
-                        style={{ width: 140, padding: "5px 8px", fontSize: 12 }}
-                      >
-                        <option value="All">🌐 All Departments</option>
-                        {activeDepts.map((d) => (
-                          <option key={d} value={d}>{d} Dept</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        value={u.role}
-                        disabled={u.id === profile?.id}
-                        onChange={(e) => update(u, { role: e.target.value })}
-                        style={{ width: 170, padding: "5px 8px", fontSize: 12 }}
-                      >
-                        <option value="admin">Global Admin (Full Access)</option>
-                        <option value="dept_admin">Dept Admin (Full Dept Access)</option>
-                        <option value="global_reader">Global Reader (View All)</option>
-                        <option value="viewer">Department Reader (View Dept Only)</option>
-                        <option value="employee">Employee (My Assets Only)</option>
-                      </select>
-                    </td>
-                    <td>
-                      <span className={`pill ${u.must_change_password ? "amber" : "green"}`}>
-                        {u.must_change_password ? "Change pending" : "Set"}
-                      </span>
-                    </td>
-                    <td><span className={`pill ${u.is_active ? "green" : "red"}`}>{u.is_active ? "Active" : "Disabled"}</span></td>
-                    <td className="mono" style={{ fontSize: 12 }}>{dateStr(u.created_at?.slice(0, 10))}</td>
-                    <td>
-                      <div className="btn-row">
-                        <button className="btn ghost sm" onClick={() => setResetting({ id: u.id, email: u.email, pwd: "" })}>Reset password</button>
-                        {u.id !== profile?.id && (
-                          <button className="btn ghost sm" onClick={() => update(u, { is_active: !u.is_active })}>
-                            {u.is_active ? "Disable" : "Enable"}
-                          </button>
+                {rows.map((u) => {
+                  const perms = u.dept_permissions || {};
+                  const permKeys = Object.keys(perms).filter((k) => perms[k] && perms[k] !== "none");
+
+                  return (
+                    <tr key={u.id}>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{u.full_name}{u.id === profile?.id && <span className="pill grey" style={{ marginLeft: 8 }}>you</span>}</div>
+                        <div style={{ color: "var(--muted)", fontSize: 12 }}>{u.email}</div>
+                      </td>
+                      <td>
+                        <span className={`pill ${u.role === "admin" ? "gold" : u.role === "global_reader" ? "amber" : "blue"}`}>
+                          {u.role === "admin" ? "Global Admin" : u.role === "dept_admin" ? "Dept Admin" : u.role === "global_reader" ? "Global Reader" : u.role === "viewer" ? "Dept Reader" : "Employee"}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="pill gold mono" style={{ fontSize: 11 }}>
+                          {u.department || "IT"}
+                        </span>
+                      </td>
+                      <td>
+                        {u.role === "admin" || u.role === "global_reader" ? (
+                          <span className="pill gold" style={{ fontSize: 11 }}>🌐 Full Global Access</span>
+                        ) : permKeys.length === 0 ? (
+                          <span style={{ color: "var(--faint)", fontSize: 12 }}>Primary Dept Only</span>
+                        ) : (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {permKeys.map((deptName) => {
+                              const level = perms[deptName];
+                              return (
+                                <span
+                                  key={deptName}
+                                  className={`pill ${level === "admin" ? "gold" : "blue"}`}
+                                  style={{ fontSize: 10 }}
+                                  title={`${deptName}: ${level === "admin" ? "Full Access (Dept Admin)" : "View Only (Reader)"}`}
+                                >
+                                  {deptName}: {level === "admin" ? "✏️ Admin" : "👁️ View"}
+                                </span>
+                              );
+                            })}
+                          </div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>
+                        <span className={`pill ${u.is_active ? "green" : "red"}`}>
+                          {u.is_active ? "Active" : "Disabled"}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <div className="btn-row" style={{ justifyContent: "flex-end" }}>
+                          <button className="btn ghost sm" onClick={() => openPermsModal(u)} title="Configure Cross-Department Access & Roles">
+                            🔑 Permissions
+                          </button>
+                          <button className="btn ghost sm" onClick={() => setResetting({ id: u.id, email: u.email, pwd: "" })}>
+                            Reset PW
+                          </button>
+                          {u.id !== profile?.id && (
+                            <button className="btn ghost sm" onClick={() => update(u, { is_active: !u.is_active })}>
+                              {u.is_active ? "Disable" : "Enable"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </Card>
 
+      {/* Modal for Managing User Permissions & Cross-Department Access */}
+      {editingPerms && (
+        <Modal title={`🔑 Permissions & Access — ${editingPerms.email}`} onClose={() => setEditingPerms(null)}>
+          <div className="stack">
+            <Field label="Primary Role">
+              <select
+                value={editingPerms.role}
+                onChange={(e) => setEditingPerms({ ...editingPerms, role: e.target.value })}
+              >
+                <option value="admin">Global Admin — Full Access across all departments</option>
+                <option value="global_reader">Global Reader — View Only across all departments</option>
+                <option value="dept_admin">Department Admin — Full Access to Primary & assigned departments</option>
+                <option value="viewer">Department Reader — View Only access</option>
+                <option value="employee">Employee — Assigned assets only</option>
+              </select>
+            </Field>
+
+            <Field label="Primary / Own Department">
+              <select
+                value={editingPerms.department || "IT"}
+                onChange={(e) => setEditingPerms({ ...editingPerms, department: e.target.value })}
+              >
+                <option value="All">🌐 All Departments (Global)</option>
+                {activeDepts.map((d) => (
+                  <option key={d} value={d}>{d} Department</option>
+                ))}
+              </select>
+            </Field>
+
+            {editingPerms.role !== "admin" && editingPerms.role !== "global_reader" && (
+              <div style={{ border: "1px solid var(--line-soft)", borderRadius: 8, padding: 14, background: "rgba(255,255,255,0.02)" }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: "var(--gold)" }}>
+                  🌐 Cross-Department Access Matrix
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+                  Set specific permissions for other departments (e.g. Production = Full Admin, Operations = View Only)
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  {activeDepts.map((dName) => {
+                    const currentLevel = editingPerms.dept_permissions?.[dName] || "none";
+                    return (
+                      <div
+                        key={dName}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "6px 10px",
+                          background: "rgba(255,255,255,0.03)",
+                          borderRadius: 6,
+                          border: "1px solid rgba(255,255,255,0.05)",
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{dName} Department</span>
+                        <select
+                          value={currentLevel}
+                          onChange={(e) => {
+                            const updated = { ...(editingPerms.dept_permissions || {}) };
+                            if (e.target.value === "none") {
+                              delete updated[dName];
+                            } else {
+                              updated[dName] = e.target.value;
+                            }
+                            setEditingPerms({ ...editingPerms, dept_permissions: updated });
+                          }}
+                          style={{ padding: "3px 8px", fontSize: 12, width: 180 }}
+                        >
+                          <option value="none">⛔ No Access</option>
+                          <option value="viewer">👁️ View Only (Reader)</option>
+                          <option value="admin">✏️ Full Access (Dept Admin)</option>
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="btn-row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+              <button className="btn ghost" onClick={() => setEditingPerms(null)}>Cancel</button>
+              <button className="btn" onClick={savePermsModal} disabled={savingPerms}>
+                {savingPerms ? "Saving…" : "💾 Save Access Permissions"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal for Creating New User */}
       {creating && (
         <Modal title="Create new user account" onClose={() => setCreating(null)}>
           <div className="stack">
@@ -172,7 +327,17 @@ export default function UsersPage() {
             <Field label="Email *">
               <input type="email" value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} placeholder="e.g. john@hydraspecma.com" />
             </Field>
-            <Field label="Department Access">
+            <Field label="Primary Role">
+              <select value={creating.role} onChange={(e) => setCreating({ ...creating, role: e.target.value })}>
+                <option value="dept_admin">Department Admin — Manage invoices, assets & budget for assigned departments</option>
+                <option value="admin">Global Admin — Full Access across all departments</option>
+                <option value="global_reader">Global Reader — View Only across all departments</option>
+                <option value="viewer">Department Reader — View Only access</option>
+                <option value="employee">Employee — Assigned assets only</option>
+              </select>
+            </Field>
+
+            <Field label="Primary Department">
               <select value={creating.department || "IT"} onChange={(e) => setCreating({ ...creating, department: e.target.value })}>
                 <option value="All">🌐 All Departments (Global)</option>
                 {activeDepts.map((d) => (
@@ -180,19 +345,45 @@ export default function UsersPage() {
                 ))}
               </select>
             </Field>
-            <Field label="Role">
-              <select value={creating.role} onChange={(e) => setCreating({ ...creating, role: e.target.value })}>
-                <option value="dept_admin">Department Admin — Manage invoices, categories, vendors & budget for department</option>
-                <option value="admin">Global Admin — Manage all departments</option>
-                <option value="global_reader">Global Reader — Read-only access to all departments</option>
-                <option value="viewer">Department Reader — Read-only access to assigned department</option>
-                <option value="employee">Employee — Restricted to assigned assets</option>
-              </select>
-            </Field>
+
+            {creating.role !== "admin" && creating.role !== "global_reader" && (
+              <div style={{ border: "1px solid var(--line-soft)", borderRadius: 8, padding: 12, background: "rgba(255,255,255,0.02)" }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: "var(--gold)", marginBottom: 8 }}>
+                  🌐 Cross-Department Access Matrix (Optional)
+                </div>
+                <div style={{ display: "grid", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                  {activeDepts.map((dName) => {
+                    const currentLevel = creating.dept_permissions?.[dName] || "none";
+                    return (
+                      <div key={dName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
+                        <span>{dName} Dept</span>
+                        <select
+                          value={currentLevel}
+                          onChange={(e) => {
+                            const updated = { ...(creating.dept_permissions || {}) };
+                            if (e.target.value === "none") {
+                              delete updated[dName];
+                            } else {
+                              updated[dName] = e.target.value;
+                            }
+                            setCreating({ ...creating, dept_permissions: updated });
+                          }}
+                          style={{ padding: "2px 6px", fontSize: 11, width: 160 }}
+                        >
+                          <option value="none">⛔ No Access</option>
+                          <option value="viewer">👁️ View Only</option>
+                          <option value="admin">✏️ Full Access</option>
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <Field label="Temporary password *">
               <input value={creating.pwd} onChange={(e) => setCreating({ ...creating, pwd: e.target.value })} placeholder="At least 8 characters" />
             </Field>
-            <div className="alert info">The user will be forced to set their own password the first time they sign in.</div>
             <div className="btn-row" style={{ justifyContent: "flex-end" }}>
               <button className="btn ghost" onClick={() => setCreating(null)}>Cancel</button>
               <button className="btn" onClick={create}>Create user</button>
