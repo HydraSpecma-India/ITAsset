@@ -194,6 +194,17 @@ export default function AssetsPage() {
   const [erpMsg, setErpMsg] = useState(null);
   const [erpResult, setErpResult] = useState(null);
 
+  const [d365MasterList, setD365MasterList] = useState([]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("itbm_d365_master");
+        if (saved) setD365MasterList(JSON.parse(saved));
+      } catch (err) {}
+    }
+  }, []);
+
   async function handleD365Sync(e) {
     if (e) e.preventDefault();
     setErpBusy(true);
@@ -201,42 +212,61 @@ export default function AssetsPage() {
     setErpResult(null);
 
     try {
-      let payload = {
-        targetDept: dept,
-      };
+      let parsed = [];
+      let jsonStr = erpForm.jsonText.trim();
+      if (!jsonStr) throw new Error("Please paste or fetch D365FO OData response.");
 
-      if (erpTab === "api") {
-        payload.syncMode = "api";
-        payload.erpUrl = erpForm.url.trim();
-        payload.username = erpForm.username.trim();
-        payload.password = erpForm.password;
-      } else {
-        payload.syncMode = "manual";
-        let parsed = [];
-        try {
-          parsed = JSON.parse(erpForm.jsonText.trim());
-        } catch (err) {
-          throw new Error("Invalid JSON format. Please paste valid D365FO FixedAssets JSON array.");
+      try {
+        const raw = JSON.parse(jsonStr);
+        parsed = Array.isArray(raw) ? raw : (raw.value || []);
+      } catch (err) {
+        throw new Error("Invalid JSON format. Please ensure you copied the complete D365FO OData response.");
+      }
+
+      if (parsed.length > 0) {
+        setD365MasterList(parsed);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("itbm_d365_master", JSON.stringify(parsed));
         }
-        payload.manualItems = parsed;
       }
 
       const res = await fetch("/api/d365-sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ targetDept: dept, syncMode: "manual", manualItems: parsed }),
       });
 
       const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || "Sync failed");
-      }
+      if (!res.ok || data.error) throw new Error(data.error || "Sync failed");
 
       setErpResult(data);
-      setErpMsg({ t: "ok", m: `Successfully synced! ${data.updatedCount} asset(s) updated with D365 Asset Numbers out of ${data.totalErpFetched} ERP records.` });
+      setErpMsg({ t: "ok", m: `Successfully synced! Loaded ${parsed.length} D365 Master assets into dropdown selection list and updated ${data.updatedCount} database items.` });
       load();
     } catch (err) {
       setErpMsg({ t: "err", m: err.message || String(err) });
+    } finally {
+      setErpBusy(false);
+    }
+  }
+
+  async function autoFetchD365Directly() {
+    setErpBusy(true);
+    setErpMsg(null);
+    const filterUrl = "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets?$select=FixedAssetNumber,FixedAssetGroupId,Name,SerialNumber";
+    try {
+      const res = await fetch(filterUrl, { credentials: "include" });
+      if (!res.ok) throw new Error("CORS / Authentication required");
+      const data = await res.json();
+      const items = data.value || [];
+      setErpForm({ ...erpForm, jsonText: JSON.stringify(items, null, 2) });
+      setD365MasterList(items);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("itbm_d365_master", JSON.stringify(items));
+      }
+      setErpMsg({ t: "ok", m: `Auto-pulled ${items.length} Fixed Assets directly from D365FO! Loaded into asset dropdown list.` });
+    } catch (err) {
+      window.open(filterUrl, "D365DataWindow", "width=1024,height=768,scrollbars=yes,resizable=yes");
+      setErpMsg({ t: "err", m: "Direct fetch requires SSO session in tab. Opened filtered OData tab; copy and paste JSON below." });
     } finally {
       setErpBusy(false);
     }
@@ -660,6 +690,41 @@ export default function AssetsPage() {
                           </div>
                         </td>
                         <td>
+                          {d365MasterList.length > 0 && (
+                            <select
+                              value={bForm.asset_no || ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const matched = d365MasterList.find((item) => (item.FixedAssetNumber || item.asset_no) === val);
+                                if (matched) {
+                                  setBulkForms({
+                                    ...bulkForms,
+                                    [r.id]: {
+                                      ...bForm,
+                                      asset_no: matched.FixedAssetNumber || matched.asset_no,
+                                      asset_group_id: matched.FixedAssetGroupId || matched.asset_group_id || bForm.asset_group_id,
+                                    },
+                                  });
+                                } else {
+                                  setBulkForms({ ...bulkForms, [r.id]: { ...bForm, asset_no: val } });
+                                }
+                              }}
+                              style={{ padding: "3px 6px", fontSize: 11, width: 120, marginBottom: 4, border: "1px solid var(--gold)" }}
+                              title="Pick an ERP asset to auto-populate Asset No and Group ID"
+                            >
+                              <option value="">-- Pick D365 Asset --</option>
+                              {d365MasterList.map((item, idx) => {
+                                const num = item.FixedAssetNumber || item.asset_no;
+                                const grp = item.FixedAssetGroupId || item.asset_group_id || "";
+                                const name = item.Name || item.asset_name || "";
+                                return (
+                                  <option key={idx} value={num}>
+                                    {num} {grp ? `(${grp})` : ""} — {name.slice(0, 18)}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          )}
                           <input
                             type="text"
                             placeholder="D365 Asset No"
@@ -968,12 +1033,12 @@ export default function AssetsPage() {
 
             <div style={{ background: "rgba(255, 204, 0, 0.08)", border: "1px solid var(--gold)", borderRadius: 8, padding: 14, marginTop: 12, marginBottom: 16 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: "var(--gold)", marginBottom: 6 }}>
-                📌 D365FO Single Sign-On Sync Workflow:
+                📌 D365FO Filtered Single Sign-On Sync Workflow:
               </div>
               <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--fg)", lineHeight: 1.6 }}>
-                <li>Click <strong>Step 1</strong> below to log in to D365FO with your HydraSpecma Microsoft credentials.</li>
-                <li>Once logged in, click <strong>Step 2</strong> to open the <code>FixedAssets</code> OData data feed in your browser.</li>
-                <li>Copy all text from that tab (select all <code>Ctrl+A</code>, <code>Ctrl+C</code>) and paste it into the box below to sync!</li>
+                <li>Click <strong>Step 1</strong> to log in to D365FO with your HydraSpecma Microsoft credentials.</li>
+                <li>Click <strong>Step 2</strong> to auto-fetch or open the optimized filtered OData feed (<code>FixedAssetNumber, FixedAssetGroupId, Name, SerialNumber</code>).</li>
+                <li>Fetched assets automatically populate the <strong>ERP Asset Selector dropdown</strong> in the Asset Register!</li>
               </ol>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
@@ -995,15 +1060,9 @@ export default function AssetsPage() {
                   type="button"
                   className="btn sm"
                   style={{ background: "var(--gold)", color: "#000", fontWeight: 700, padding: "9px 10px", fontSize: 12 }}
-                  onClick={() => {
-                    window.open(
-                      "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets",
-                      "D365DataWindow",
-                      "width=1024,height=768,scrollbars=yes,resizable=yes"
-                    );
-                  }}
+                  onClick={autoFetchD365Directly}
                 >
-                  🌐 Step 2: Get FixedAssets Data ↗
+                  ⚡ Step 2: Auto-Fetch Filtered Data ↗
                 </button>
               </div>
             </div>
