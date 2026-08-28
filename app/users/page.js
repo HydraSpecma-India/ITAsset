@@ -6,10 +6,11 @@ import { Card, Field, Modal } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/session";
 import { dateStr } from "@/lib/format";
-import { DEPARTMENTS } from "@/lib/department";
+import { useDept } from "@/lib/department";
 
 export default function UsersPage() {
   const { profile } = useAuth();
+  const { departments: activeDepts } = useDept();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
@@ -118,7 +119,7 @@ export default function UsersPage() {
                         style={{ width: 140, padding: "5px 8px", fontSize: 12 }}
                       >
                         <option value="All">🌐 All Departments</option>
-                        {DEPARTMENTS.map((d) => (
+                        {activeDepts.map((d) => (
                           <option key={d} value={d}>{d} Dept</option>
                         ))}
                       </select>
@@ -133,7 +134,7 @@ export default function UsersPage() {
                         <option value="admin">Global Admin (Full Access)</option>
                         <option value="dept_admin">Dept Admin (Full Dept Access)</option>
                         <option value="global_reader">Global Reader (View All)</option>
-                        <option value="viewer">Dept Reader (View Dept Only)</option>
+                        <option value="viewer">Department Reader (View Dept Only)</option>
                         <option value="employee">Employee (My Assets Only)</option>
                       </select>
                     </td>
@@ -163,14 +164,18 @@ export default function UsersPage() {
       </Card>
 
       {creating && (
-        <Modal title="New user account" onClose={() => setCreating(null)}>
+        <Modal title="Create new user account" onClose={() => setCreating(null)}>
           <div className="stack">
-            <Field label="Full name *"><input value={creating.full_name} onChange={(e) => setCreating({ ...creating, full_name: e.target.value })} /></Field>
-            <Field label="Email *"><input type="email" value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} /></Field>
+            <Field label="Full name *">
+              <input value={creating.full_name} onChange={(e) => setCreating({ ...creating, full_name: e.target.value })} placeholder="e.g. John Doe" />
+            </Field>
+            <Field label="Email *">
+              <input type="email" value={creating.email} onChange={(e) => setCreating({ ...creating, email: e.target.value })} placeholder="e.g. john@hydraspecma.com" />
+            </Field>
             <Field label="Department Access">
               <select value={creating.department || "IT"} onChange={(e) => setCreating({ ...creating, department: e.target.value })}>
                 <option value="All">🌐 All Departments (Global)</option>
-                {DEPARTMENTS.map((d) => (
+                {activeDepts.map((d) => (
                   <option key={d} value={d}>{d} Department</option>
                 ))}
               </select>
