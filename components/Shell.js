@@ -20,6 +20,7 @@ const NAV = [
   ]},
   { group: "Setup", items: [
     { href: "/masters", label: "Categories & Vendors", ico: "⚙", hideForEmployee: true },
+    { href: "/departments", label: "Departments", ico: "🏢", globalAdminOnly: true },
     { href: "/users", label: "Users", ico: "◉", globalAdminOnly: true },
   ]},
 ];
