@@ -12,8 +12,23 @@ export async function POST(req) {
 
     let fixedAssets = [];
 
-    if (syncMode === "manual" && Array.isArray(manualItems)) {
-      fixedAssets = manualItems;
+    if (manualItems) {
+      if (Array.isArray(manualItems)) {
+        fixedAssets = manualItems;
+      } else if (typeof manualItems === "object" && manualItems !== null) {
+        fixedAssets = manualItems.value || manualItems.FixedAssets || [];
+      } else if (typeof manualItems === "string") {
+        try {
+          const parsed = JSON.parse(manualItems);
+          fixedAssets = Array.isArray(parsed) ? parsed : (parsed.value || []);
+        } catch (e) {
+          const match = manualItems.match(/(\{[\s\S]*"value"[\s\S]*\}|\[[\s\S]*\])/);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
+            fixedAssets = Array.isArray(parsed) ? parsed : (parsed.value || []);
+          }
+        }
+      }
     } else {
       // 1. Fetch D365FO FixedAssets OData endpoint
       const targetUrl = erpUrl || "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets";

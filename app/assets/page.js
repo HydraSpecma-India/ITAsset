@@ -963,26 +963,38 @@ export default function AssetsPage() {
 
       {erpModalOpen && (
         <div className="modal-backdrop" onClick={() => setErpModalOpen(false)}>
-          <div className="modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 660 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3 style={{ display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
-                <span>🔄 Sync D365FO ERP Fixed Assets</span>
+                <span>🔄 D365FO ERP Fixed Assets Interactive Sync</span>
               </h3>
               <button className="btn ghost sm" onClick={() => setErpModalOpen(false)}>✕</button>
             </div>
 
-            <div className="btn-row" style={{ marginTop: 12, marginBottom: 16 }}>
+            <div style={{ background: "rgba(255, 204, 0, 0.08)", border: "1px solid var(--gold)", borderRadius: 8, padding: 14, marginTop: 12, marginBottom: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "var(--gold)", marginBottom: 6 }}>
+                📌 How D365FO Single Sign-On Sync Works:
+              </div>
+              <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--fg)", lineHeight: 1.6 }}>
+                <li>Click <strong>Step 1</strong> below to open the official D365 login screen in a popup window.</li>
+                <li>Log in with your HydraSpecma Microsoft credentials.</li>
+                <li>After login, the popup window will display your ERP <code>FixedAssets</code> data.</li>
+                <li>Copy the data from that window (or select all <code>Ctrl+A</code>) and paste it into the box below to sync!</li>
+              </ol>
+
               <button
-                className={`btn ${erpTab === "api" ? "" : "ghost"} sm`}
-                onClick={() => setErpTab("api")}
+                type="button"
+                className="btn sm"
+                style={{ background: "var(--gold)", color: "#000", fontWeight: 700, width: "100%", padding: "10px 14px", marginTop: 12, fontSize: 13 }}
+                onClick={() => {
+                  window.open(
+                    "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets",
+                    "D365LoginWindow",
+                    "width=1024,height=768,scrollbars=yes,resizable=yes"
+                  );
+                }}
               >
-                🌐 Live D365FO OData Endpoint
-              </button>
-              <button
-                className={`btn ${erpTab === "json" ? "" : "ghost"} sm`}
-                onClick={() => setErpTab("json")}
-              >
-                📄 Paste / Upload D365 JSON Export
+                🌐 Step 1: Open D365 Login Screen (hydraspecma-prod.operations.dynamics.com) ↗
               </button>
             </div>
 
@@ -992,93 +1004,44 @@ export default function AssetsPage() {
               </div>
             )}
 
-            {erpTab === "api" ? (
-              <form onSubmit={handleD365Sync}>
-                <div className="field" style={{ marginBottom: 12 }}>
-                  <label className="field-label">D365FO FixedAssets Endpoint URL</label>
-                  <input
-                    type="text"
-                    value={erpForm.url}
-                    onChange={(e) => setErpForm({ ...erpForm, url: e.target.value })}
-                    placeholder="https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets"
-                    required
-                  />
-                  <span style={{ fontSize: 11, color: "var(--faint)" }}>
-                    Endpoint: https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets
-                  </span>
-                </div>
+            <form onSubmit={handleD365Sync}>
+              <div className="field" style={{ marginBottom: 12 }}>
+                <label className="field-label" style={{ fontWeight: 600 }}>
+                  Step 2: Paste D365FO FixedAssets OData Response or Screen Text
+                </label>
+                <textarea
+                  rows={7}
+                  value={erpForm.jsonText}
+                  onChange={(e) => setErpForm({ ...erpForm, jsonText: e.target.value })}
+                  placeholder={`Paste D365 OData JSON here (e.g.):\n{\n  "value": [\n    {\n      "FixedAssetNumber": "FA-001928",\n      "FixedAssetGroupId": "COMP-HW",\n      "Name": "Dell Laptop 5540",\n      "SerialNumber": "SN-9812938"\n    }\n  ]\n}`}
+                  style={{ fontFamily: "monospace", fontSize: 12 }}
+                  required
+                />
+              </div>
 
-                <div className="grid g2" style={{ marginBottom: 16 }}>
-                  <div className="field">
-                    <label className="field-label">ERP Username / Email</label>
-                    <input
-                      type="text"
-                      value={erpForm.username}
-                      onChange={(e) => setErpForm({ ...erpForm, username: e.target.value })}
-                      placeholder="e.g. erp.admin@hydraspecma.com"
-                    />
-                  </div>
-                  <div className="field">
-                    <label className="field-label">ERP Password / Secret</label>
-                    <input
-                      type="password"
-                      value={erpForm.password}
-                      onChange={(e) => setErpForm({ ...erpForm, password: e.target.value })}
-                      placeholder="••••••••••••"
-                    />
-                  </div>
+              <div className="modal-footer" style={{ justifyContent: "space-between" }}>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                  Auto-extracts FixedAssetNumber & FixedAssetGroupId
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="btn ghost sm" onClick={() => setErpModalOpen(false)}>Cancel</button>
+                  <button type="submit" className="btn sm" disabled={erpBusy}>
+                    {erpBusy ? "Syncing with Database…" : "⚡ Extract & Sync All Assets"}
+                  </button>
                 </div>
-
-                <div className="modal-footer" style={{ justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                    Auto-matches by Serial No, Asset Tag & Asset Name
-                  </span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="btn ghost sm" onClick={() => setErpModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn sm" disabled={erpBusy}>
-                      {erpBusy ? "Connecting & Syncing…" : "⚡ Start Live D365 Sync"}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={handleD365Sync}>
-                <div className="field" style={{ marginBottom: 12 }}>
-                  <label className="field-label">Paste D365FO FixedAssets JSON Array</label>
-                  <textarea
-                    rows={8}
-                    value={erpForm.jsonText}
-                    onChange={(e) => setErpForm({ ...erpForm, jsonText: e.target.value })}
-                    placeholder={`[\n  {\n    "FixedAssetNumber": "FA-001928",\n    "FixedAssetGroupId": "COMP-HW",\n    "Name": "Dell Latitude 5540 Laptop",\n    "SerialNumber": "SN-9812938"\n  }\n]`}
-                    style={{ fontFamily: "monospace", fontSize: 12 }}
-                    required
-                  />
-                </div>
-
-                <div className="modal-footer" style={{ justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                    Extracts FixedAssetNumber & FixedAssetGroupId
-                  </span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="btn ghost sm" onClick={() => setErpModalOpen(false)}>Cancel</button>
-                    <button type="submit" className="btn sm" disabled={erpBusy}>
-                      {erpBusy ? "Processing…" : "⚡ Sync JSON Data"}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
+              </div>
+            </form>
 
             {erpResult && erpResult.matchedDetails && erpResult.matchedDetails.length > 0 && (
               <div style={{ marginTop: 16, borderTop: "1px solid var(--hs-charcoal)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
-                  Matched & Updated Asset Items ({erpResult.matchedDetails.length}):
+                <div style={{ fontWeight: 600, fontSize: 13, color: "var(--gold)", marginBottom: 8 }}>
+                  ✅ Matched & Updated {erpResult.matchedDetails.length} Asset Item(s):
                 </div>
                 <div style={{ maxHeight: 160, overflowY: "auto", fontSize: 12 }}>
                   {erpResult.matchedDetails.map((item, idx) => (
-                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                       <span>{item.asset_name}</span>
-                      <span className="mono gold">Asset No: {item.asset_no} ({item.group_id})</span>
+                      <span className="mono gold">Asset No: {item.asset_no} (Grp: {item.group_id})</span>
                     </div>
                   ))}
                 </div>
