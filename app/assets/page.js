@@ -1,12 +1,122 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Shell from "@/components/Shell";
 import { Card, Empty, Kpi } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { money, dateStr, currentYear, csvDownload, ASSET_STATUS, daysUntil, expiryState } from "@/lib/format";
 import { useAuth } from "@/lib/session";
 import { useDept } from "@/lib/department";
+
+function D365AssetPicker({ value, onSelect, d365List }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const filtered = useMemo(() => {
+    if (!d365List || !d365List.length) return [];
+    if (!query.trim()) return d365List.slice(0, 40);
+    const q = query.toLowerCase();
+    return d365List.filter((item) => {
+      const num = (item.FixedAssetNumber || item.asset_no || "").toLowerCase();
+      const grp = (item.FixedAssetGroupId || item.asset_group_id || "").toLowerCase();
+      const name = (item.Name || item.asset_name || "").toLowerCase();
+      return num.includes(q) || grp.includes(q) || name.includes(q);
+    }).slice(0, 40);
+  }, [d365List, query]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", minWidth: 140, marginBottom: 4 }}>
+      <input
+        type="text"
+        placeholder={value ? `Asset: ${value}` : "🔍 Search D365 ERP Asset…"}
+        value={query}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        style={{
+          padding: "4px 8px",
+          fontSize: 11,
+          width: "100%",
+          border: "1px solid var(--gold)",
+          borderRadius: 4,
+          background: "#111",
+          color: "var(--fg)",
+        }}
+      />
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            zIndex: 99999,
+            width: 250,
+            maxHeight: 200,
+            overflowY: "auto",
+            background: "#18181b",
+            border: "1px solid var(--gold)",
+            borderRadius: 6,
+            boxShadow: "0 10px 25px rgba(0,0,0,0.8)",
+            padding: 4,
+          }}
+        >
+          <div style={{ padding: "4px 8px", fontSize: 10, color: "var(--gold)", background: "rgba(255,204,0,0.1)", borderRadius: 4, marginBottom: 4, display: "flex", justifyContent: "space-between" }}>
+            <span>🔍 Found ({filtered.length})</span>
+            <span style={{ cursor: "pointer", fontWeight: "bold" }} onClick={() => setOpen(false)}>✕</span>
+          </div>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "8px", fontSize: 11, color: "var(--muted)" }}>No matching D365 assets</div>
+          ) : (
+            filtered.map((item, idx) => {
+              const num = item.FixedAssetNumber || item.asset_no;
+              const grp = item.FixedAssetGroupId || item.asset_group_id || "";
+              const name = item.Name || item.asset_name || "";
+              return (
+                <div
+                  key={idx}
+                  onClick={() => {
+                    onSelect(num, grp);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                  style={{
+                    padding: "6px 8px",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    borderRadius: 4,
+                    borderBottom: "1px solid rgba(255,255,255,0.05)",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,204,0,0.15)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <div style={{ fontWeight: 700, color: "var(--gold)" }}>
+                    {num} {grp ? `(${grp})` : ""}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {name}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AssetsPage() {
   const { profile } = useAuth();
@@ -851,39 +961,20 @@ export default function AssetsPage() {
                         </td>
                         <td>
                           {d365MasterList.length > 0 && (
-                            <select
-                              value={bForm.asset_no || ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const matched = d365MasterList.find((item) => (item.FixedAssetNumber || item.asset_no) === val);
-                                if (matched) {
-                                  setBulkForms({
-                                    ...bulkForms,
-                                    [r.id]: {
-                                      ...bForm,
-                                      asset_no: matched.FixedAssetNumber || matched.asset_no,
-                                      asset_group_id: matched.FixedAssetGroupId || matched.asset_group_id || bForm.asset_group_id,
-                                    },
-                                  });
-                                } else {
-                                  setBulkForms({ ...bulkForms, [r.id]: { ...bForm, asset_no: val } });
-                                }
+                            <D365AssetPicker
+                              value={bForm.asset_no}
+                              d365List={d365MasterList}
+                              onSelect={(num, grp) => {
+                                setBulkForms({
+                                  ...bulkForms,
+                                  [r.id]: {
+                                    ...bForm,
+                                    asset_no: num,
+                                    asset_group_id: grp || bForm.asset_group_id,
+                                  },
+                                });
                               }}
-                              style={{ padding: "3px 6px", fontSize: 11, width: 120, marginBottom: 4, border: "1px solid var(--gold)" }}
-                              title="Pick an ERP asset to auto-populate Asset No and Group ID"
-                            >
-                              <option value="">-- Pick D365 Asset --</option>
-                              {d365MasterList.map((item, idx) => {
-                                const num = item.FixedAssetNumber || item.asset_no;
-                                const grp = item.FixedAssetGroupId || item.asset_group_id || "";
-                                const name = item.Name || item.asset_name || "";
-                                return (
-                                  <option key={idx} value={num}>
-                                    {num} {grp ? `(${grp})` : ""} — {name.slice(0, 18)}
-                                  </option>
-                                );
-                              })}
-                            </select>
+                            />
                           )}
                           <input
                             type="text"
@@ -997,36 +1088,17 @@ export default function AssetsPage() {
                         </td>
                         <td>
                           {d365MasterList.length > 0 && (
-                            <select
-                              value={editForm.asset_no || ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const matched = d365MasterList.find((item) => (item.FixedAssetNumber || item.asset_no) === val);
-                                if (matched) {
-                                  setEditForm({
-                                    ...editForm,
-                                    asset_no: matched.FixedAssetNumber || matched.asset_no,
-                                    asset_group_id: matched.FixedAssetGroupId || matched.asset_group_id || editForm.asset_group_id,
-                                  });
-                                } else {
-                                  setEditForm({ ...editForm, asset_no: val });
-                                }
+                            <D365AssetPicker
+                              value={editForm.asset_no}
+                              d365List={d365MasterList}
+                              onSelect={(num, grp) => {
+                                setEditForm({
+                                  ...editForm,
+                                  asset_no: num,
+                                  asset_group_id: grp || editForm.asset_group_id,
+                                });
                               }}
-                              style={{ padding: "3px 6px", fontSize: 11, width: 120, marginBottom: 4, border: "1px solid var(--gold)" }}
-                              title="Pick an ERP asset to auto-populate Asset No and Group ID"
-                            >
-                              <option value="">-- Pick D365 Asset --</option>
-                              {d365MasterList.map((item, idx) => {
-                                const num = item.FixedAssetNumber || item.asset_no;
-                                const grp = item.FixedAssetGroupId || item.asset_group_id || "";
-                                const name = item.Name || item.asset_name || "";
-                                return (
-                                  <option key={idx} value={num}>
-                                    {num} {grp ? `(${grp})` : ""} — {name.slice(0, 18)}
-                                  </option>
-                                );
-                              })}
-                            </select>
+                            />
                           )}
                           <input
                             type="text"
