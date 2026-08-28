@@ -26,11 +26,96 @@ const NAV = [
 
 export default function Shell({ title, subtitle, actions, children }) {
   const { user, profile, loading, signOut } = useAuth();
-  const { dept, setDept, availableDepts, isGlobal } = useDept();
+  const { dept, setDept, availableDepts, refreshDepartments } = useDept();
   const router = useRouter();
   const pathname = usePathname();
   const [theme, setTheme] = useState("dark");
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const [manageDeptsModalOpen, setManageDeptsModalOpen] = useState(false);
+  const [deptListRows, setDeptListRows] = useState([]);
+  const [deptLoading, setDeptLoading] = useState(false);
+  const [newDeptForm, setNewDeptForm] = useState({ name: "", code: "", description: "" });
+  const [editingDeptId, setEditingDeptId] = useState(null);
+  const [editingDeptForm, setEditingDeptForm] = useState({});
+  const [deptModalMsg, setDeptModalMsg] = useState(null);
+
+  const loadDeptRows = useCallback(async () => {
+    setDeptLoading(true);
+    const { data } = await supabase
+      .from("it_budget_departments")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+    setDeptListRows(data || []);
+    setDeptLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (manageDeptsModalOpen) {
+      loadDeptRows();
+    }
+  }, [manageDeptsModalOpen, loadDeptRows]);
+
+  async function handleAddDept(e) {
+    e.preventDefault();
+    if (!newDeptForm.name.trim()) return;
+    setDeptModalMsg(null);
+
+    const payload = {
+      name: newDeptForm.name.trim(),
+      code: newDeptForm.code.trim().toUpperCase() || newDeptForm.name.trim().slice(0, 5).toUpperCase(),
+      description: newDeptForm.description.trim() || null,
+      sort_order: (deptListRows.length + 1) * 10,
+      is_active: true,
+    };
+
+    const { error } = await supabase.from("it_budget_departments").insert(payload);
+    if (error) {
+      setDeptModalMsg({ type: "danger", text: error.message });
+    } else {
+      setNewDeptForm({ name: "", code: "", description: "" });
+      setDeptModalMsg({ type: "success", text: `Budget Department "${payload.name}" created!` });
+      loadDeptRows();
+      if (refreshDepartments) refreshDepartments();
+    }
+  }
+
+  async function handleSaveEditedDept(d) {
+    setDeptModalMsg(null);
+    const { error } = await supabase
+      .from("it_budget_departments")
+      .update({
+        name: editingDeptForm.name.trim(),
+        code: editingDeptForm.code.trim().toUpperCase(),
+        description: editingDeptForm.description ? editingDeptForm.description.trim() : null,
+      })
+      .eq("id", d.id);
+
+    if (error) {
+      setDeptModalMsg({ type: "danger", text: error.message });
+    } else {
+      setEditingDeptId(null);
+      loadDeptRows();
+      if (refreshDepartments) refreshDepartments();
+    }
+  }
+
+  async function handleToggleDeptStatus(d) {
+    setDeptModalMsg(null);
+    const nextStatus = !d.is_active;
+    const { error } = await supabase
+      .from("it_budget_departments")
+      .update({ is_active: nextStatus })
+      .eq("id", d.id);
+
+    if (error) {
+      setDeptModalMsg({ type: "danger", text: error.message });
+    } else {
+      loadDeptRows();
+      if (refreshDepartments) refreshDepartments();
+    }
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem("itbm_theme") || "dark";
@@ -163,6 +248,17 @@ export default function Shell({ title, subtitle, actions, children }) {
                   <option key={d} value={d}>{d === "All" ? "🌐 All Departments" : `${d}`}</option>
                 ))}
               </select>
+
+              {isGlobalAdmin && (
+                <button
+                  className="btn ghost sm"
+                  onClick={() => setManageDeptsModalOpen(true)}
+                  style={{ padding: "2px 8px", fontSize: 11, color: "var(--gold)", borderColor: "var(--gold)", fontWeight: 700 }}
+                  title="Manage Budget Departments Pop-up"
+                >
+                  ⚙️ Manage Depts
+                </button>
+              )}
             </div>
 
             <button className="btn ghost sm" onClick={toggleTheme} title="Toggle Dark/Light Mode" style={{ borderRadius: 20, padding: "4px 12px" }}>
@@ -179,6 +275,147 @@ export default function Shell({ title, subtitle, actions, children }) {
         </header>
         <div className="page">{children}</div>
       </div>
+
+      {/* Pop-up Modal for Managing Budget Departments */}
+      {manageDeptsModalOpen && (
+        <div className="modal-backdrop" onClick={() => setManageDeptsModalOpen(false)}>
+          <div className="modal" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                <span>🏢 Manage Budget Departments</span>
+              </h3>
+              <button className="btn ghost sm" onClick={() => setManageDeptsModalOpen(false)}>✕</button>
+            </div>
+
+            {deptModalMsg && (
+              <div className={`alert ${deptModalMsg.type === "success" ? "success" : "danger"}`} style={{ marginTop: 10, marginBottom: 10 }}>
+                {deptModalMsg.text}
+              </div>
+            )}
+
+            {/* Form to Add New Budget Department */}
+            <form onSubmit={handleAddDept} style={{ background: "rgba(255,204,0,0.06)", border: "1px solid var(--gold-dim)", borderRadius: 8, padding: 12, marginTop: 12, marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, color: "var(--gold)", marginBottom: 8 }}>
+                ➕ Add New Budget Department
+              </div>
+              <div className="grid g3" style={{ gap: 8, marginBottom: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Department Name (e.g. R&D)"
+                  value={newDeptForm.name}
+                  onChange={(e) => setNewDeptForm({ ...newDeptForm, name: e.target.value })}
+                  style={{ padding: "5px 8px", fontSize: 12 }}
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="Code (e.g. RD)"
+                  value={newDeptForm.code}
+                  onChange={(e) => setNewDeptForm({ ...newDeptForm, code: e.target.value })}
+                  style={{ padding: "5px 8px", fontSize: 12 }}
+                />
+                <input
+                  type="text"
+                  placeholder="Description (Optional)"
+                  value={newDeptForm.description}
+                  onChange={(e) => setNewDeptForm({ ...newDeptForm, description: e.target.value })}
+                  style={{ padding: "5px 8px", fontSize: 12 }}
+                />
+              </div>
+              <button type="submit" className="btn sm" style={{ width: "100%", padding: "6px" }}>
+                + Create Budget Department
+              </button>
+            </form>
+
+            {/* List of Active Budget Departments */}
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+              Active Budget Departments ({deptListRows.filter((d) => d.is_active).length}):
+            </div>
+
+            {deptLoading ? (
+              <div className="loading">Loading budget departments…</div>
+            ) : (
+              <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--line-soft)", borderRadius: 6 }}>
+                <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "rgba(255,255,255,0.04)", textAlign: "left" }}>
+                      <th style={{ padding: "6px 10px" }}>Name</th>
+                      <th style={{ padding: "6px 10px" }}>Code</th>
+                      <th style={{ padding: "6px 10px" }}>Status</th>
+                      <th style={{ padding: "6px 10px", textAlign: "right" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deptListRows.map((d) => {
+                      const isEditing = editingDeptId === d.id;
+                      return (
+                        <tr key={d.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                          <td style={{ padding: "6px 10px", fontWeight: 600 }}>
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editingDeptForm.name || ""}
+                                onChange={(e) => setEditingDeptForm({ ...editingDeptForm, name: e.target.value })}
+                                style={{ padding: "2px 6px", fontSize: 12, width: 120 }}
+                              />
+                            ) : (
+                              d.name
+                            )}
+                          </td>
+                          <td style={{ padding: "6px 10px" }}>
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                value={editingDeptForm.code || ""}
+                                onChange={(e) => setEditingDeptForm({ ...editingDeptForm, code: e.target.value })}
+                                style={{ padding: "2px 6px", fontSize: 12, width: 70 }}
+                              />
+                            ) : (
+                              <span className="pill gold mono" style={{ fontSize: 10 }}>{d.code || d.name.slice(0, 4)}</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "6px 10px" }}>
+                            <span
+                              className={`pill ${d.is_active ? "gold" : "grey"}`}
+                              onClick={() => handleToggleDeptStatus(d)}
+                              style={{ cursor: "pointer", fontSize: 10 }}
+                            >
+                              {d.is_active ? "✓ Active" : "✕ Disabled"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                            {isEditing ? (
+                              <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                                <button className="btn sm" onClick={() => handleSaveEditedDept(d)} style={{ padding: "2px 6px", fontSize: 11 }}>
+                                  💾
+                                </button>
+                                <button className="btn ghost sm" onClick={() => setEditingDeptId(null)} style={{ padding: "2px 6px", fontSize: 11 }}>
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                className="btn ghost sm"
+                                onClick={() => {
+                                  setEditingDeptId(d.id);
+                                  setEditingDeptForm({ name: d.name, code: d.code || "", description: d.description || "" });
+                                }}
+                                style={{ padding: "2px 6px", fontSize: 11 }}
+                              >
+                                ✏️ Edit
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
