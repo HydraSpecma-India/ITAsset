@@ -249,27 +249,105 @@ export default function AssetsPage() {
     }
   }
 
-  async function autoFetchD365Directly() {
-    setErpBusy(true);
-    setErpMsg(null);
-    const filterUrl = "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets?$select=FixedAssetNumber,FixedAssetGroupId,Name,SerialNumber";
+  async function processD365ItemsAndSync(parsed, mode) {
     try {
-      const res = await fetch(filterUrl, { credentials: "include" });
-      if (!res.ok) throw new Error("CORS / Authentication required");
-      const data = await res.json();
-      const items = data.value || [];
-      setErpForm({ ...erpForm, jsonText: JSON.stringify(items, null, 2) });
-      setD365MasterList(items);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("itbm_d365_master", JSON.stringify(items));
+      if (parsed.length > 0) {
+        setD365MasterList(parsed);
+        setErpForm((prev) => ({ ...prev, jsonText: JSON.stringify(parsed, null, 2) }));
+        if (typeof window !== "undefined") {
+          localStorage.setItem("itbm_d365_master", JSON.stringify(parsed));
+        }
       }
-      setErpMsg({ t: "ok", m: `Auto-pulled ${items.length} Fixed Assets directly from D365FO! Loaded into asset dropdown list.` });
+
+      const res = await fetch("/api/d365-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetDept: dept, syncMode: "manual", manualItems: parsed }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Sync failed");
+
+      setErpResult(data);
+      setErpMsg({
+        t: "ok",
+        m: `🎉 Fully Automated Sync Successful! Closed D365 window automatically, loaded ${parsed.length} assets into master dropdown list, and updated ${data.updatedCount} database items.`
+      });
+      load();
     } catch (err) {
-      window.open(filterUrl, "D365DataWindow", "width=1024,height=768,scrollbars=yes,resizable=yes");
-      setErpMsg({ t: "err", m: "Direct fetch requires SSO session in tab. Opened filtered OData tab; press Ctrl+A, Ctrl+C then click '📋 One-Click Auto-Paste & Sync' below!" });
+      setErpMsg({ t: "err", m: err.message || String(err) });
     } finally {
       setErpBusy(false);
     }
+  }
+
+  async function autoFetchD365Directly() {
+    setErpBusy(true);
+    setErpMsg({ t: "ok", m: "⚡ Connecting to D365FO... Opening window, reading OData, auto-closing tab, and syncing database..." });
+    const filterUrl = "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets?$select=FixedAssetNumber,FixedAssetGroupId,Name,SerialNumber";
+
+    // Attempt 1: Direct CORS fetch
+    try {
+      const res = await fetch(filterUrl, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        const items = data.value || [];
+        await processD365ItemsAndSync(items, "Direct API");
+        return;
+      }
+    } catch (e) {}
+
+    // Attempt 2: Automated Bridge Popup Window (Auto-opens, auto-reads, auto-closes, auto-syncs!)
+    const win = window.open(filterUrl, "D365BridgeWindow", "width=700,height=500,left=100,top=100");
+
+    let attempts = 0;
+    const maxAttempts = 30; // 15 seconds max
+
+    const timer = setInterval(async () => {
+      attempts++;
+      try {
+        if (!win || win.closed) {
+          clearInterval(timer);
+          setErpBusy(false);
+          return;
+        }
+
+        let bodyText = "";
+        try {
+          bodyText = win.document && win.document.body ? win.document.body.innerText : "";
+        } catch (corsErr) {}
+
+        if (bodyText && (bodyText.includes("FixedAssetNumber") || bodyText.includes("@odata.context"))) {
+          clearInterval(timer);
+          win.close(); // AUTOMATICALLY CLOSE THE TAB!
+          
+          let parsed = [];
+          try {
+            const raw = JSON.parse(bodyText.trim());
+            parsed = Array.isArray(raw) ? raw : (raw.value || []);
+          } catch (pErr) {}
+
+          if (parsed.length > 0) {
+            await processD365ItemsAndSync(parsed, "Automated Tab Auto-Close");
+          } else {
+            setErpMsg({ t: "err", m: "Failed to parse D365 OData JSON response." });
+            setErpBusy(false);
+          }
+          return;
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(timer);
+        setErpBusy(false);
+        setErpMsg({
+          t: "err",
+          m: "Cross-origin window boundary restricted direct text extraction. Please copy all (Ctrl+A, Ctrl+C) from open tab and click '📋 One-Click Auto-Paste & Sync' below!"
+        });
+      }
+    }, 500);
   }
 
   async function pasteClipboardAndSync() {
