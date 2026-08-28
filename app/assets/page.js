@@ -968,29 +968,44 @@ export default function AssetsPage() {
 
             <div style={{ background: "rgba(255, 204, 0, 0.08)", border: "1px solid var(--gold)", borderRadius: 8, padding: 14, marginTop: 12, marginBottom: 16 }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: "var(--gold)", marginBottom: 6 }}>
-                📌 How D365FO Single Sign-On Sync Works:
+                📌 D365FO Single Sign-On Sync Workflow:
               </div>
               <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--fg)", lineHeight: 1.6 }}>
-                <li>Click <strong>Step 1</strong> below to open the official D365 login screen in a popup window.</li>
-                <li>Log in with your HydraSpecma Microsoft credentials.</li>
-                <li>After login, the popup window will display your ERP <code>FixedAssets</code> data.</li>
-                <li>Copy the data from that window (or select all <code>Ctrl+A</code>) and paste it into the box below to sync!</li>
+                <li>Click <strong>Step 1</strong> below to log in to D365FO with your HydraSpecma Microsoft credentials.</li>
+                <li>Once logged in, click <strong>Step 2</strong> to open the <code>FixedAssets</code> OData data feed in your browser.</li>
+                <li>Copy all text from that tab (select all <code>Ctrl+A</code>, <code>Ctrl+C</code>) and paste it into the box below to sync!</li>
               </ol>
 
-              <button
-                type="button"
-                className="btn sm"
-                style={{ background: "var(--gold)", color: "#000", fontWeight: 700, width: "100%", padding: "10px 14px", marginTop: 12, fontSize: 13 }}
-                onClick={() => {
-                  window.open(
-                    "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets",
-                    "D365LoginWindow",
-                    "width=1024,height=768,scrollbars=yes,resizable=yes"
-                  );
-                }}
-              >
-                🌐 Step 1: Open D365 Login Screen (hydraspecma-prod.operations.dynamics.com) ↗
-              </button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="btn sm"
+                  style={{ background: "var(--gold-dim)", color: "var(--gold)", border: "1px solid var(--gold)", fontWeight: 700, padding: "9px 10px", fontSize: 12 }}
+                  onClick={() => {
+                    window.open(
+                      "https://hydraspecma-prod.operations.dynamics.com/",
+                      "D365LoginWindow",
+                      "width=1024,height=768,scrollbars=yes,resizable=yes"
+                    );
+                  }}
+                >
+                  🔑 Step 1: Sign In to D365FO ↗
+                </button>
+                <button
+                  type="button"
+                  className="btn sm"
+                  style={{ background: "var(--gold)", color: "#000", fontWeight: 700, padding: "9px 10px", fontSize: 12 }}
+                  onClick={() => {
+                    window.open(
+                      "https://hydraspecma-prod.operations.dynamics.com/data/FixedAssets",
+                      "D365DataWindow",
+                      "width=1024,height=768,scrollbars=yes,resizable=yes"
+                    );
+                  }}
+                >
+                  🌐 Step 2: Get FixedAssets Data ↗
+                </button>
+              </div>
             </div>
 
             {erpMsg && (
