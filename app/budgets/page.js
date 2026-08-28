@@ -178,6 +178,7 @@ export default function BudgetsPage() {
   async function save() {
     setSaving(true);
     setMsg(null);
+    const targetDept = dept === "All" ? "IT" : dept;
 
     try {
       const { data: latestVerRes } = await supabase
@@ -219,7 +220,6 @@ export default function BudgetsPage() {
               .eq("id", oldRow.id);
             if (updErr) throw updErr;
           } else if (amount > 0 || notesVal) {
-            const targetDept = dept === "All" ? "IT" : dept;
             const { error: insErr } = await supabase
               .from("it_budgets")
               .insert({ budget_year: year, category_id: c.id, scope, amount, notes: notesVal, budget_department: targetDept });
