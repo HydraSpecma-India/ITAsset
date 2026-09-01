@@ -22,6 +22,7 @@ export default function BudgetsPage() {
   const { profile } = useAuth();
   const { dept, isDeptAdmin } = useDept();
   const canEdit = isDeptAdmin;
+  const isAdmin = isDeptAdmin;
   const [year, setYear] = useState(currentYear());
   const [typeFilter, setTypeFilter] = useState("all");
   const [categories, setCategories] = useState([]);
@@ -181,12 +182,13 @@ export default function BudgetsPage() {
     const targetDept = dept === "All" ? "IT" : dept;
 
     try {
-      const { data: latestVerRes } = await supabase
-        .from("it_budget_versions")
-        .select("version_number")
-        .eq("budget_year", year)
-        .order("version_number", { ascending: false })
-        .limit(1);
+      let verNumQuery = supabase.from("it_budget_versions").select("version_number").eq("budget_year", year);
+      if (targetDept === "IT") {
+        verNumQuery = verNumQuery.or("budget_department.eq.IT,budget_department.is.null");
+      } else {
+        verNumQuery = verNumQuery.eq("budget_department", targetDept);
+      }
+      const { data: latestVerRes } = await verNumQuery.order("version_number", { ascending: false }).limit(1);
 
       const lastVerNo = latestVerRes && latestVerRes.length > 0 ? Number(latestVerRes[0].version_number) : 0;
       const nextVerNo = lastVerNo + 1;
@@ -265,6 +267,8 @@ export default function BudgetsPage() {
     if (!confirm(`⚠️ Are you sure you want to restore Version v${ver.version_number}.0? This will override current active budget values for ${year}.`)) return;
 
     setLoading(true);
+    const targetDept = dept === "All" ? "IT" : dept;
+
     try {
       const snap = ver.snapshot_data || [];
 
@@ -276,16 +280,17 @@ export default function BudgetsPage() {
         if (oldRow?.id) {
           await supabase.from("it_budgets").update({ amount, notes: notesVal, updated_at: new Date().toISOString() }).eq("id", oldRow.id);
         } else if (amount > 0 || notesVal) {
-          await supabase.from("it_budgets").insert({ budget_year: year, category_id: item.category_id, scope: item.scope, amount, notes: notesVal });
+          await supabase.from("it_budgets").insert({ budget_year: year, category_id: item.category_id, scope: item.scope, amount, notes: notesVal, budget_department: targetDept });
         }
       }
 
-      const { data: latestVerRes } = await supabase
-        .from("it_budget_versions")
-        .select("version_number")
-        .eq("budget_year", year)
-        .order("version_number", { ascending: false })
-        .limit(1);
+      let verNumQuery = supabase.from("it_budget_versions").select("version_number").eq("budget_year", year);
+      if (targetDept === "IT") {
+        verNumQuery = verNumQuery.or("budget_department.eq.IT,budget_department.is.null");
+      } else {
+        verNumQuery = verNumQuery.eq("budget_department", targetDept);
+      }
+      const { data: latestVerRes } = await verNumQuery.order("version_number", { ascending: false }).limit(1);
 
       const lastVerNo = latestVerRes && latestVerRes.length > 0 ? Number(latestVerRes[0].version_number) : 0;
       const nextVerNo = lastVerNo + 1;
@@ -297,6 +302,7 @@ export default function BudgetsPage() {
         change_summary: `Restored active budget state to Version v${ver.version_number}.0 (${ver.version_name || ""})`,
         snapshot_data: snap,
         created_by: profile?.full_name || profile?.email || "Admin",
+        budget_department: targetDept,
       });
 
       alert(`Successfully restored active budget to Version v${ver.version_number}.0!`);
