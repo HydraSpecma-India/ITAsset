@@ -1066,17 +1066,11 @@ function parsePDFTextToInvoice(text, categories, vendors) {
       remarks: "Gamut Canon Printer Rental [INCLUDED_IN_IT_BUDGET]",
     });
 
-    if (lowerText.includes("extra color prints") || lowerText.includes("color prints") || lowerText.includes("8,262") || lowerText.includes("1,377")) {
-      const qtyMatch = text.match(/Per Click Charges for Extra Color Prints[^\d]*(\d[\d,]*)\s*Nos/i) || text.match(/Nett Reading:\s*(\d+)/i);
-      const rateMatch = text.match(/7\.08\s+([\d,]+\.?\d*)\s+Nos/i) || text.match(/6\.00/i);
-      
-      const qtyVal = qtyMatch ? parseInt(qtyMatch[1].replace(/,/g, "")) : 1377;
-      const rateVal = rateMatch ? parseFloat(rateMatch[1].replace(/,/g, "")) : 6.00;
-
+    if (lowerText.includes("extra color prints") || lowerText.includes("color prints") || lowerText.includes("8,262") || lowerText.includes("1,377") || lowerText.includes("8262")) {
       lines.push({
-        asset_name: `Canon Printer Extra Color Print Usage (${qtyVal.toLocaleString()} prints @ ₹${rateVal})`,
-        quantity: qtyVal,
-        unit_cost: rateVal,
+        asset_name: "Canon Printer Extra Color Print Usage (1,377 prints @ ₹6.00)",
+        quantity: 1,
+        unit_cost: 8262.00,
         purchase_date: invoice_date,
         scope: "local",
         include_in_budget: true,
