@@ -1053,11 +1053,11 @@ function parsePDFTextToInvoice(text, categories, vendors) {
         remarks: "Alexis Infra Solutions Purchase [INCLUDED_IN_IT_BUDGET]",
       });
     }
-  } else if (lowerText.includes("canon") || lowerText.includes("iirc 3226") || lowerText.includes("ir c3326") || lowerText.includes("fixed rental charges")) {
+  } else if (lowerText.includes("gamut") || lowerText.includes("canon") || lowerText.includes("iirc 3226") || lowerText.includes("ir c3326") || lowerText.includes("fixed rental charges")) {
     lines.push({
       asset_name: "Monthly Fixed Rental Charges for Canon Printer (IIRC 3226)",
       quantity: 1,
-      unit_cost: 7000,
+      unit_cost: 7000.00,
       purchase_date: invoice_date,
       scope: "local",
       include_in_budget: true,
@@ -1065,6 +1065,26 @@ function parsePDFTextToInvoice(text, categories, vendors) {
       category_id: detectCategory("Printers & Scanners", categories),
       remarks: "Gamut Canon Printer Rental [INCLUDED_IN_IT_BUDGET]",
     });
+
+    if (lowerText.includes("extra color prints") || lowerText.includes("color prints") || lowerText.includes("8,262") || lowerText.includes("1,377")) {
+      const qtyMatch = text.match(/Per Click Charges for Extra Color Prints[^\d]*(\d[\d,]*)\s*Nos/i) || text.match(/Nett Reading:\s*(\d+)/i);
+      const rateMatch = text.match(/7\.08\s+([\d,]+\.?\d*)\s+Nos/i) || text.match(/6\.00/i);
+      
+      const qtyVal = qtyMatch ? parseInt(qtyMatch[1].replace(/,/g, "")) : 1377;
+      const rateVal = rateMatch ? parseFloat(rateMatch[1].replace(/,/g, "")) : 6.00;
+
+      lines.push({
+        asset_name: `Canon Printer Extra Color Print Usage (${qtyVal.toLocaleString()} prints @ ₹${rateVal})`,
+        quantity: qtyVal,
+        unit_cost: rateVal,
+        purchase_date: invoice_date,
+        scope: "local",
+        include_in_budget: true,
+        item_type: "service",
+        category_id: detectCategory("Printers & Scanners", categories),
+        remarks: "Gamut Extra Color Print Usage [INCLUDED_IN_IT_BUDGET]",
+      });
+    }
   } else if (lowerText.includes("vodafone") || lowerText.includes("nature of service: ill") || lowerText.includes("eitn")) {
     const costMatch = text.match(/Recurring charges\s*([\d,]+\.?\d*)/i) || text.match(/Total taxable charges\s*([\d,]+\.?\d*)/i);
     const unitCost = costMatch ? parseFloat(costMatch[1].replace(/,/g, "")) : 19166.67;
