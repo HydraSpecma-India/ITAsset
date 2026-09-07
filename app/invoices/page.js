@@ -1092,6 +1092,7 @@ async function extractTextFromPDFFileInBrowser(file) {
 }
 
 function CsvImportModal({ categories, vendors, onClose, onImported }) {
+  const { dept } = useDept();
   const [files, setFiles] = useState([]);
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
