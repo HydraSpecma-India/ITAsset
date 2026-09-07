@@ -960,7 +960,32 @@ function parsePDFTextToInvoice(text, categories, vendors) {
 
   // 5. Line Item Extraction
   if (lowerText.includes("alexis infra solutions") || lowerText.includes("chitlapakkam")) {
-    if (lowerText.includes("tiandy") || lowerText.includes("tc-c382v") || lowerText.includes("camera outdoor metal box") || lowerText.includes("85258900")) {
+    if (lowerText.includes("hikvision") || lowerText.includes("nvr") || lowerText.includes("32- channel nvr") || lowerText.includes("029/26-27")) {
+      lines.push(
+        {
+          asset_name: "HIKVISION 32-Channel NVR (2-SATA, 4K HDMI Output)",
+          quantity: 1,
+          unit_cost: 26000.00,
+          purchase_date: invoice_date,
+          scope: "local",
+          include_in_budget: true,
+          item_type: "hardware",
+          category_id: detectCategory("CCTV & Security", categories),
+          remarks: "Alexis Hikvision 32Ch NVR [INCLUDED_IN_IT_BUDGET]",
+        },
+        {
+          asset_name: "D-Link Cat-6 UTP Cable",
+          quantity: 85,
+          unit_cost: 55.00,
+          purchase_date: invoice_date,
+          scope: "local",
+          include_in_budget: true,
+          item_type: "hardware",
+          category_id: detectCategory("CCTV & Security", categories),
+          remarks: "Alexis D-Link Cat6 UTP Cable (85 Mtrs) [INCLUDED_IN_IT_BUDGET]",
+        }
+      );
+    } else if (lowerText.includes("tiandy") || lowerText.includes("tc-c382v") || lowerText.includes("camera outdoor metal box") || lowerText.includes("85258900")) {
       lines.push(
         {
           asset_name: "TIANDY TC-C382V 8MP 180° IP Camera",
