@@ -91,6 +91,51 @@ export default function PhonesPage() {
       .slice(0, 30);
   }, [masterEmployees, empSearchQuery]);
 
+  // Combined list of all departments (budget depts + employee master depts + existing row depts)
+  const allDepartmentsList = useMemo(() => {
+    const set = new Set([
+      ...departments,
+      ...masterEmployees.map((e) => e.department).filter(Boolean),
+      ...rows.map((r) => r.department).filter(Boolean),
+    ]);
+    return Array.from(set).sort();
+  }, [departments, masterEmployees, rows]);
+
+  // Grid Inline Employee Combobox State & Helpers
+  const [gridEmpFocusId, setGridEmpFocusId] = useState(null);
+  const [gridEmpQuery, setGridEmpQuery] = useState("");
+
+  const getGridFilteredEmps = useCallback(
+    (queryStr) => {
+      const sq = (queryStr || "").trim().toLowerCase();
+      if (!sq) return masterEmployees.slice(0, 20);
+      return masterEmployees
+        .filter(
+          (e) =>
+            (e.full_name || "").toLowerCase().includes(sq) ||
+            (e.email || "").toLowerCase().includes(sq) ||
+            (e.department || "").toLowerCase().includes(sq)
+        )
+        .slice(0, 20);
+    },
+    [masterEmployees]
+  );
+
+  function handleSelectEmpForGridRow(rowKey, emp) {
+    setGridRows((prev) =>
+      prev.map((r) => {
+        const match = r.id === rowKey || r.tempId === rowKey;
+        if (!match) return r;
+        return {
+          ...r,
+          employee_name: emp.full_name,
+          employee_code: emp.email || r.employee_code,
+          department: emp.department || r.department,
+        };
+      })
+    );
+  }
+
   useEffect(() => {
     setDeptFilter(dept);
   }, [dept]);
@@ -689,15 +734,70 @@ export default function PhonesPage() {
                 const rowKey = r.id || r.tempId;
                 return (
                   <tr key={rowKey} style={{ borderBottom: "1px solid var(--border)", background: r.isNew ? "rgba(37,99,235,0.06)" : "var(--bg)" }}>
-                    <td style={{ padding: "6px 8px" }}>
+                    <td style={{ padding: "6px 8px", position: "relative", minWidth: 180 }}>
                       <input
                         type="text"
                         required
-                        placeholder="Employee Full Name"
+                        placeholder="🔍 Search employee from master…"
                         value={r.employee_name || ""}
-                        onChange={(e) => handleGridChange(rowKey, "employee_name", e.target.value)}
-                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                        onFocus={() => setGridEmpFocusId(rowKey)}
+                        onChange={(e) => {
+                          handleGridChange(rowKey, "employee_name", e.target.value);
+                          setGridEmpQuery(e.target.value);
+                          setGridEmpFocusId(rowKey);
+                        }}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--gold)", background: "var(--bg-input)", color: "var(--fg)" }}
                       />
+                      {gridEmpFocusId === rowKey && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            left: 0,
+                            zIndex: 9999,
+                            width: 250,
+                            maxHeight: 200,
+                            overflowY: "auto",
+                            background: "#18181b",
+                            border: "1px solid var(--gold)",
+                            borderRadius: 6,
+                            boxShadow: "0 10px 25px rgba(0,0,0,0.9)",
+                            padding: 4,
+                            marginTop: 2,
+                          }}
+                        >
+                          <div style={{ padding: "4px 6px", fontSize: 10, color: "var(--gold)", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between" }}>
+                            <span>👥 Select Employee ({getGridFilteredEmps(r.employee_name || gridEmpQuery).length})</span>
+                            <span style={{ cursor: "pointer", fontWeight: "bold" }} onClick={() => setGridEmpFocusId(null)}>✕</span>
+                          </div>
+                          {getGridFilteredEmps(r.employee_name || gridEmpQuery).length === 0 ? (
+                            <div style={{ padding: 8, fontSize: 11, color: "var(--muted)", textAlign: "center" }}>No match in master</div>
+                          ) : (
+                            getGridFilteredEmps(r.employee_name || gridEmpQuery).map((emp) => (
+                              <div
+                                key={emp.id}
+                                onClick={() => {
+                                  handleSelectEmpForGridRow(rowKey, emp);
+                                  setGridEmpFocusId(null);
+                                }}
+                                style={{
+                                  padding: "6px 8px",
+                                  cursor: "pointer",
+                                  borderRadius: 4,
+                                  borderBottom: "1px solid rgba(255,255,255,0.05)",
+                                  background: r.employee_name === emp.full_name ? "rgba(255,204,0,0.2)" : "transparent",
+                                }}
+                              >
+                                <div style={{ fontWeight: 600, fontSize: 12, color: "var(--fg)" }}>{emp.full_name}</div>
+                                <div style={{ fontSize: 10, color: "var(--muted)", display: "flex", gap: 6, marginTop: 1 }}>
+                                  <span>🏢 {emp.department || "No Dept"}</span>
+                                  {emp.email && <span style={{ color: "var(--gold)" }}>• {emp.email}</span>}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "6px 8px" }}>
                       <input
@@ -714,7 +814,7 @@ export default function PhonesPage() {
                         onChange={(e) => handleGridChange(rowKey, "department", e.target.value)}
                         style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
                       >
-                        {departments.map((d) => (
+                        {allDepartmentsList.map((d) => (
                           <option key={d} value={d}>{d}</option>
                         ))}
                       </select>
@@ -1024,7 +1124,7 @@ export default function PhonesPage() {
 
               <Field label="Department">
                 <select value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}>
-                  {departments.map((d) => (
+                  {allDepartmentsList.map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
