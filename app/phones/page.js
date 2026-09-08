@@ -203,6 +203,7 @@ export default function PhonesPage() {
   const [proposalHistoryOpen, setProposalHistoryOpen] = useState(false);
   const [savedProposals, setSavedProposals] = useState([]);
   const [savingProposal, setSavingProposal] = useState(false);
+  const [retrievedVersion, setRetrievedVersion] = useState(null);
 
   const loadSavedProposals = useCallback(async () => {
     try {
@@ -239,6 +240,7 @@ export default function PhonesPage() {
   }
 
   function handleOpenProposal(catName = "all") {
+    setRetrievedVersion(null);
     let initialItems = [];
     if (catName !== "all") {
       const matchingRows = rows.filter((r) => {
@@ -446,6 +448,7 @@ export default function PhonesPage() {
         versionLabel: vLabel,
         proposalNo: propNo,
       });
+      setRetrievedVersion(null);
       setProposalModalOpen(false);
       alert(`Official Proposal ${vLabel} (${propNo}) saved and stored in database successfully!`);
     } catch (err) {
@@ -454,6 +457,22 @@ export default function PhonesPage() {
     } finally {
       setSavingProposal(false);
     }
+  }
+
+  function handleRetrieveProposal(propRecord) {
+    setProposalTitle(propRecord.title || "Mobile Phone Allocation Proposal");
+    setProposalJustification(propRecord.justification || "");
+    setProposalDate(todayISO());
+    const versionStr = propRecord.version_label || `v${propRecord.version}.0`;
+    setRetrievedVersion(`${versionStr} (${propRecord.proposal_no})`);
+
+    const items = (propRecord.items || []).map((item, idx) => ({
+      ...item,
+      tempId: item.tempId || "p_ret_" + idx + "_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+    }));
+    setProposalItems(items);
+    setProposalHistoryOpen(false);
+    setProposalModalOpen(true);
   }
 
   function handleRePrintSavedProposal(propRecord) {
@@ -2050,14 +2069,21 @@ export default function PhonesPage() {
         </Modal>
       )}
 
-      {/* Modal for Creating Multi-Person Mobile Phone Allocation Proposal */}
+      {/* Modal for Creating / Editing Multi-Person Mobile Phone Allocation Proposal */}
       {proposalModalOpen && (
         <Modal
-          title={`📄 Create Mobile Phone Allocation Proposal — ${proposalItems.length} Employee(s)`}
+          title={retrievedVersion ? `🔄 Edit Proposal & Submit New Version (Loaded from ${retrievedVersion}) — ${proposalItems.length} Employee(s)` : `📄 Create Mobile Phone Allocation Proposal — ${proposalItems.length} Employee(s)`}
           onClose={() => setProposalModalOpen(false)}
           wide
         >
           <form onSubmit={handleSaveOfficialProposal} className="stack" style={{ gap: 14 }}>
+            {retrievedVersion && (
+              <div style={{ padding: "8px 12px", background: "rgba(37, 99, 235, 0.12)", border: "1px solid #2563eb", borderRadius: 6, fontSize: 12, color: "#2563eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>🔄 <strong>Retrieved Proposal Version ({retrievedVersion}) Loaded:</strong> Modify items/fields below and click <strong>Option 2</strong> to submit as a <strong>NEW version</strong>.</span>
+                <button type="button" style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", fontWeight: "bold", fontSize: 14 }} onClick={() => setRetrievedVersion(null)}>✕</button>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12 }}>
               <Field label="Proposal Title / Subject *">
                 <input
@@ -2495,6 +2521,14 @@ export default function PhonesPage() {
                           <span className="pill green">{p.status || "Submitted"}</span>
                         </td>
                         <td style={{ padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          <button
+                            className="btn ghost sm"
+                            onClick={() => handleRetrieveProposal(p)}
+                            style={{ marginRight: 6, borderColor: "#2563eb", color: "#2563eb", fontWeight: 600 }}
+                            title="Load this proposal into the editor to modify and save as a new version"
+                          >
+                            ✏️ Retrieve & Edit
+                          </button>
                           <button
                             className="btn ghost sm"
                             onClick={() => handleRePrintSavedProposal(p)}
