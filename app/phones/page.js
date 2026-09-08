@@ -218,20 +218,166 @@ export default function PhonesPage() {
     }));
   }
 
-  function handleReceivedDateChange(recDate) {
-    let autoExp = form.expiry_date;
-    if (recDate && !form.expiry_date) {
-      // Default policy expiry is 2 years (24 months) from received date
-      const d = new Date(recDate);
-      d.setFullYear(d.getFullYear() + 2);
-      autoExp = d.toISOString().split("T")[0];
+  // Helper for 3 years policy expiry calculation (Issue Date + 3 Years)
+  function calcExpiryDate(receivedDateStr) {
+    if (!receivedDateStr) return "";
+    const parts = receivedDateStr.split("-");
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10) + 3;
+      const month = parts[1];
+      const day = parts[2];
+      return `${year}-${month}-${day}`;
     }
+    const d = new Date(receivedDateStr);
+    d.setFullYear(d.getFullYear() + 3);
+    return d.toISOString().split("T")[0];
+  }
+
+  function handleReceivedDateChange(recDate) {
+    const autoExp = recDate ? calcExpiryDate(recDate) : form.expiry_date;
     setForm((prev) => ({
       ...prev,
       received_date: recDate,
       expiry_date: autoExp,
       status: recDate ? (prev.status === "Eligible" ? "Active" : prev.status) : prev.status,
     }));
+  }
+
+  // Inline Grid Edit State & Handler Functions
+  const [gridMode, setGridMode] = useState(false);
+  const [gridRows, setGridRows] = useState([]);
+  const [savingGrid, setSavingGrid] = useState(false);
+
+  function enableGridMode() {
+    setGridRows(filtered.map((r) => ({ ...r })));
+    setGridMode(true);
+  }
+
+  function cancelGridMode() {
+    setGridMode(false);
+    setGridRows([]);
+  }
+
+  function addGridRow() {
+    const targetDept = dept === "All" ? (profile?.department || "IT") : dept;
+    const newRow = {
+      tempId: "new_" + Date.now(),
+      employee_name: "",
+      employee_code: "",
+      department: targetDept,
+      phone_category: "Android Standard (₹25k)",
+      budget_amount: 25000,
+      eligible_date: todayISO(),
+      received_date: "",
+      expiry_date: "",
+      device_details: "",
+      serial_imei: "",
+      status: "Eligible",
+      remarks: "",
+      budget_department: targetDept,
+      isNew: true,
+    };
+    setGridRows((prev) => [newRow, ...prev]);
+  }
+
+  function handleGridChange(id, field, value) {
+    setGridRows((prev) =>
+      prev.map((r) => {
+        const match = r.id === id || r.tempId === id;
+        if (!match) return r;
+        const updated = { ...r, [field]: value };
+        if (field === "phone_category") {
+          const tier = PHONE_TIERS.find((t) => t.id === value);
+          if (tier) updated.budget_amount = tier.budget;
+        }
+        return updated;
+      })
+    );
+  }
+
+  function handleGridReceivedDateChange(id, recDate) {
+    const autoExp = recDate ? calcExpiryDate(recDate) : "";
+    setGridRows((prev) =>
+      prev.map((r) => {
+        const match = r.id === id || r.tempId === id;
+        if (!match) return r;
+        return {
+          ...r,
+          received_date: recDate,
+          expiry_date: recDate ? autoExp : r.expiry_date,
+          status: recDate && r.status === "Eligible" ? "Active" : r.status,
+        };
+      })
+    );
+  }
+
+  function removeGridRow(id) {
+    setGridRows((prev) => prev.filter((r) => r.id !== id && r.tempId !== id));
+  }
+
+  async function saveGridChanges() {
+    setSavingGrid(true);
+    try {
+      let updatedCount = 0;
+      let insertedCount = 0;
+
+      for (const r of gridRows) {
+        if (!r.employee_name || !r.employee_name.trim()) continue;
+
+        const payload = {
+          employee_name: r.employee_name.trim(),
+          employee_code: (r.employee_code || "").trim() || null,
+          department: r.department || (dept === "All" ? "IT" : dept),
+          phone_category: r.phone_category || "Android Standard (₹25k)",
+          budget_amount: Number(r.budget_amount || 25000),
+          eligible_date: r.eligible_date || null,
+          received_date: r.received_date || null,
+          expiry_date: r.expiry_date || null,
+          device_details: (r.device_details || "").trim() || null,
+          serial_imei: (r.serial_imei || "").trim() || null,
+          status: r.status || "Eligible",
+          remarks: (r.remarks || "").trim() || null,
+          budget_department: r.department || (dept === "All" ? "IT" : dept),
+          updated_at: new Date().toISOString(),
+        };
+
+        if (r.isNew || !r.id) {
+          const { error } = await supabase.from("it_phone_allocations").insert(payload);
+          if (error) throw error;
+          insertedCount++;
+        } else {
+          const orig = rows.find((o) => o.id === r.id);
+          if (
+            !orig ||
+            r.employee_name !== orig.employee_name ||
+            r.employee_code !== orig.employee_code ||
+            r.department !== orig.department ||
+            r.phone_category !== orig.phone_category ||
+            Number(r.budget_amount) !== Number(orig.budget_amount) ||
+            r.eligible_date !== orig.eligible_date ||
+            r.received_date !== orig.received_date ||
+            r.expiry_date !== orig.expiry_date ||
+            r.device_details !== orig.device_details ||
+            r.serial_imei !== orig.serial_imei ||
+            r.status !== orig.status ||
+            r.remarks !== orig.remarks
+          ) {
+            const { error } = await supabase.from("it_phone_allocations").update(payload).eq("id", r.id);
+            if (error) throw error;
+            updatedCount++;
+          }
+        }
+      }
+
+      setGridMode(false);
+      await loadData();
+      alert(`Grid changes saved successfully! (${updatedCount} updated, ${insertedCount} created)`);
+    } catch (err) {
+      console.error("Save grid error:", err);
+      alert("Failed to save grid changes: " + (err.message || String(err)));
+    } finally {
+      setSavingGrid(false);
+    }
   }
 
   async function handleSave(e) {
@@ -339,21 +485,61 @@ export default function PhonesPage() {
       title="📱 Mobile Phone Allocation Module"
       subtitle={`${dept === "All" ? "All Departments" : dept} employee phone eligibility matrix, device tiers (iPhone ₹55k, Android ₹55k, Android ₹25k) & policy renewal tracking`}
       actions={
-        <>
-          <button className="btn ghost sm" onClick={handleExportCsv}>
-            Export CSV
-          </button>
-          {canEdit && (
-            <button className="btn sm" onClick={handleOpenAdd}>
-              + New Allocation
+        gridMode ? (
+          <>
+            <button className="btn sm" onClick={addGridRow} style={{ background: "#2563eb", color: "#fff" }}>
+              ➕ Add Quick Row
             </button>
-          )}
-        </>
+            <button className="btn sm primary" onClick={saveGridChanges} disabled={savingGrid}>
+              {savingGrid ? "Saving..." : "💾 Save All Changes"}
+            </button>
+            <button className="btn ghost sm" onClick={cancelGridMode}>
+              ✕ Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn ghost sm" onClick={handleExportCsv}>
+              Export CSV
+            </button>
+            {canEdit && (
+              <>
+                <button
+                  className="btn ghost sm"
+                  onClick={enableGridMode}
+                  style={{ borderColor: "var(--gold)", color: "var(--gold)", fontWeight: 600 }}
+                >
+                  ✏️ Inline Grid Edit
+                </button>
+                <button className="btn sm" onClick={handleOpenAdd}>
+                  + New Allocation
+                </button>
+              </>
+            )}
+          </>
+        )
       }
     >
       {!canEdit && (
         <div style={{ padding: "10px 16px", background: "rgba(255,204,0,0.1)", border: "1px solid var(--gold)", borderRadius: 8, color: "var(--gold)", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
           <span>ℹ️</span> View-Only Mode: You have read-only access for Phone Allocation records.
+        </div>
+      )}
+
+      {gridMode && (
+        <div style={{ padding: "12px 16px", background: "rgba(255,204,0,0.12)", border: "1px solid var(--gold)", borderRadius: 8, color: "var(--gold)", marginBottom: 16, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <strong>✏️ Inline Grid Edit Mode Active:</strong> Edit employee records directly in table cells. Setting/updating a <em>Received Date (Issue Date)</em> automatically calculates <strong>Policy Expiry Date (3 Years)</strong>.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn sm" onClick={addGridRow} style={{ background: "#2563eb", color: "#fff" }}>
+              ➕ Add Row
+            </button>
+            <button className="btn sm primary" onClick={saveGridChanges} disabled={savingGrid}>
+              {savingGrid ? "Saving..." : "💾 Save All Changes"}
+            </button>
+            <button className="btn ghost sm" onClick={cancelGridMode}>Cancel</button>
+          </div>
         </div>
       )}
 
@@ -477,8 +663,160 @@ export default function PhonesPage() {
         </div>
       </Card>
 
-      {/* Main Allocations Table */}
-      {loading ? (
+      {/* Main Allocations Table or Inline Grid Mode */}
+      {gridMode ? (
+        <div style={{ overflowX: "auto", border: "1px solid var(--gold)", borderRadius: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: "rgba(255,204,0,0.15)", borderBottom: "1px solid var(--gold)", textAlign: "left" }}>
+                <th style={{ padding: "8px 10px", minWidth: 160 }}>Employee Name *</th>
+                <th style={{ padding: "8px 10px", minWidth: 140 }}>Code / Email</th>
+                <th style={{ padding: "8px 10px", minWidth: 120 }}>Department</th>
+                <th style={{ padding: "8px 10px", minWidth: 160 }}>Phone Category Tier</th>
+                <th style={{ padding: "8px 10px", minWidth: 100 }}>Budget (₹)</th>
+                <th style={{ padding: "8px 10px", minWidth: 130 }}>Eligible Date</th>
+                <th style={{ padding: "8px 10px", minWidth: 135 }}>Received Date (Issue)</th>
+                <th style={{ padding: "8px 10px", minWidth: 135 }}>Expiry Date (3Y)</th>
+                <th style={{ padding: "8px 10px", minWidth: 120 }}>Status</th>
+                <th style={{ padding: "8px 10px", minWidth: 150 }}>Device Details</th>
+                <th style={{ padding: "8px 10px", minWidth: 140 }}>Serial / IMEI</th>
+                <th style={{ padding: "8px 10px", minWidth: 140 }}>Remarks</th>
+                <th style={{ padding: "8px 10px", textAlign: "center" }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gridRows.map((r) => {
+                const rowKey = r.id || r.tempId;
+                return (
+                  <tr key={rowKey} style={{ borderBottom: "1px solid var(--border)", background: r.isNew ? "rgba(37,99,235,0.06)" : "var(--bg)" }}>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Employee Full Name"
+                        value={r.employee_name || ""}
+                        onChange={(e) => handleGridChange(rowKey, "employee_name", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="text"
+                        placeholder="Code or Email"
+                        value={r.employee_code || ""}
+                        onChange={(e) => handleGridChange(rowKey, "employee_code", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <select
+                        value={r.department || "IT"}
+                        onChange={(e) => handleGridChange(rowKey, "department", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      >
+                        {departments.map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <select
+                        value={r.phone_category || "Android Standard (₹25k)"}
+                        onChange={(e) => handleGridChange(rowKey, "phone_category", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      >
+                        {PHONE_TIERS.map((t) => (
+                          <option key={t.id} value={t.id}>{t.id}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="number"
+                        value={r.budget_amount || 0}
+                        onChange={(e) => handleGridChange(rowKey, "budget_amount", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="date"
+                        value={r.eligible_date || ""}
+                        onChange={(e) => handleGridChange(rowKey, "eligible_date", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="date"
+                        value={r.received_date || ""}
+                        onChange={(e) => handleGridReceivedDateChange(rowKey, e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 4, border: "1px solid var(--gold)", background: "rgba(255,204,0,0.1)", color: "var(--fg)", fontWeight: 600 }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="date"
+                        value={r.expiry_date || ""}
+                        onChange={(e) => handleGridChange(rowKey, "expiry_date", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <select
+                        value={r.status || "Eligible"}
+                        onChange={(e) => handleGridChange(rowKey, "status", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      >
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="text"
+                        placeholder="e.g. iPhone 15"
+                        value={r.device_details || ""}
+                        onChange={(e) => handleGridChange(rowKey, "device_details", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="text"
+                        placeholder="IMEI code"
+                        value={r.serial_imei || ""}
+                        onChange={(e) => handleGridChange(rowKey, "serial_imei", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="text"
+                        placeholder="Remarks"
+                        value={r.remarks || ""}
+                        onChange={(e) => handleGridChange(rowKey, "remarks", e.target.value)}
+                        style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                      />
+                    </td>
+                    <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                      <button
+                        type="button"
+                        className="btn ghost sm"
+                        onClick={() => removeGridRow(rowKey)}
+                        style={{ color: "var(--red)", padding: "2px 6px" }}
+                      >
+                        🗑️
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : loading ? (
         <Card style={{ padding: 40, textAlign: "center" }}>
           <div style={{ color: "var(--muted)" }}>Loading Mobile Phone Allocations...</div>
         </Card>
