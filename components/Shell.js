@@ -16,6 +16,7 @@ const NAV = [
   { group: "Records", items: [
     { href: "/invoices", label: "Invoices", ico: "▦", hideForEmployee: true },
     { href: "/assets", label: "Asset Register", ico: "▧" },
+    { href: "/phones", label: "Phone Allocation", ico: "📱" },
     { href: "/employees", label: "Employees & Depts", ico: "👥", globalAdminOnly: true },
   ]},
   { group: "Setup", items: [
