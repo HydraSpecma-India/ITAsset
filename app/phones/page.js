@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Shell, { isPhoneModuleAuthorized } from "@/components/Shell";
+import Shell, { isPhoneModuleAuthorized, canManagePhoneAllocations } from "@/components/Shell";
 import { Card, Field, Modal, Empty } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { money, dateStr, todayISO, daysUntil, csvDownload } from "@/lib/format";
 import { useAuth } from "@/lib/session";
 import { useDept } from "@/lib/department";
 
-const PHONE_TIERS = [
+const DEFAULT_PHONE_TIERS = [
   { id: "iPhone (₹55k)", label: "iPhone (Budget ₹55,000)", budget: 55000, icon: "🍏", desc: "Executive Tier (Budget: ₹55,000)" },
   { id: "Android High (₹55k)", label: "Android High (Budget ₹55,000)", budget: 55000, icon: "🤖", desc: "Premium Android Tier (Budget: ₹55,000)" },
   { id: "Android Standard (₹25k)", label: "Android Standard (Budget ₹25,000)", budget: 25000, icon: "📱", desc: "Standard Staff Tier (Budget: ₹25,000)" },
@@ -41,7 +41,9 @@ const blankForm = (defaultDept = "IT") => ({
 export default function PhonesPage() {
   const { profile } = useAuth();
   const { dept, isDeptAdmin, departments } = useDept();
-  const canEdit = isDeptAdmin;
+  
+  // Explicit Management Access Rule: IT Admin and Global Admin ONLY!
+  const canEdit = canManagePhoneAllocations(profile);
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +56,46 @@ export default function PhonesPage() {
   const [editingRow, setEditingRow] = useState(null);
   const [form, setForm] = useState(blankForm(dept === "All" ? "IT" : dept));
   const [saving, setSaving] = useState(false);
+
+  // Dynamic Phone Categories State
+  const [categories, setCategories] = useState([]);
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [catForm, setCatForm] = useState({ name: "", budget: 25000, icon: "📱", description: "" });
+  const [savingCat, setSavingCat] = useState(false);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("it_phone_categories")
+        .select("*")
+        .eq("is_active", true)
+        .order("budget", { ascending: false });
+      if (data && data.length > 0) {
+        setCategories(data);
+      }
+    } catch (err) {
+      console.error("Failed to load phone categories:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
+  const PHONE_TIERS = useMemo(() => {
+    if (categories.length > 0) {
+      return categories.map((c) => ({
+        id: c.name,
+        label: `${c.name} (Budget ₹${Number(c.budget).toLocaleString()})`,
+        budget: Number(c.budget),
+        icon: c.icon || "📱",
+        desc: c.description || `Budget: ₹${Number(c.budget).toLocaleString()}`,
+        raw: c,
+      }));
+    }
+    return DEFAULT_PHONE_TIERS;
+  }, [categories]);
 
   // Employee Master Lookup State
   const [masterEmployees, setMasterEmployees] = useState([]);
@@ -251,6 +293,63 @@ export default function PhonesPage() {
     setEmpSearchQuery(r.employee_name || "");
     setEmpDropdownOpen(false);
     setModalOpen(true);
+  }
+
+  function handleOpenAddCat() {
+    setEditingCat(null);
+    setCatForm({ name: "", budget: 25000, icon: "📱", description: "" });
+  }
+
+  function handleOpenEditCat(c) {
+    setEditingCat(c);
+    setCatForm({
+      name: c.name || "",
+      budget: c.budget || 25000,
+      icon: c.icon || "📱",
+      description: c.description || "",
+    });
+  }
+
+  async function handleSaveCat(e) {
+    if (e) e.preventDefault();
+    if (!catForm.name.trim()) return alert("Category name is required.");
+    setSavingCat(true);
+
+    const payload = {
+      name: catForm.name.trim(),
+      budget: Number(catForm.budget || 0),
+      icon: catForm.icon.trim() || "📱",
+      description: catForm.description.trim() || null,
+      is_active: true,
+    };
+
+    try {
+      if (editingCat?.id) {
+        const { error } = await supabase.from("it_phone_categories").update(payload).eq("id", editingCat.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("it_phone_categories").insert(payload);
+        if (error) throw error;
+      }
+      await loadCategories();
+      setEditingCat(null);
+      setCatForm({ name: "", budget: 25000, icon: "📱", description: "" });
+    } catch (err) {
+      alert("Failed to save category: " + (err.message || String(err)));
+    } finally {
+      setSavingCat(false);
+    }
+  }
+
+  async function handleDeleteCat(c) {
+    if (!confirm(`Are you sure you want to delete phone category "${c.name}"?`)) return;
+    try {
+      const { error } = await supabase.from("it_phone_categories").delete().eq("id", c.id);
+      if (error) throw error;
+      await loadCategories();
+    } catch (err) {
+      alert("Failed to delete category: " + err.message);
+    }
   }
 
   function handleCategoryChange(catId) {
@@ -549,6 +648,13 @@ export default function PhonesPage() {
             </button>
             {canEdit && (
               <>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => setCatModalOpen(true)}
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  ⚙️ Manage Categories
+                </button>
                 <button
                   className="btn ghost sm"
                   onClick={enableGridMode}
@@ -1219,6 +1325,115 @@ export default function PhonesPage() {
               </button>
             </div>
           </form>
+      {/* Modal for Managing Phone Categories & Tiers */}
+      {catModalOpen && (
+        <Modal
+          title="⚙️ Manage Mobile Phone Categories & Budget Tiers"
+          onClose={() => setCatModalOpen(false)}
+        >
+          <div className="stack" style={{ gap: 16 }}>
+            <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+              Manage active phone model tiers, icon badges, default policy budget amounts, and tier descriptions.
+            </div>
+
+            {/* Category List */}
+            <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                    <th style={{ padding: "8px 10px" }}>Tier Icon & Name</th>
+                    <th style={{ padding: "8px 10px" }}>Budget Amount (₹)</th>
+                    <th style={{ padding: "8px 10px" }}>Description</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categories.map((c) => (
+                    <tr key={c.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 600 }}>
+                        <span style={{ fontSize: 16, marginRight: 6 }}>{c.icon || "📱"}</span> {c.name}
+                      </td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: "var(--gold)" }} className="mono">
+                        {money(c.budget)}
+                      </td>
+                      <td style={{ padding: "8px 10px", color: "var(--muted)" }}>{c.description || "—"}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button className="btn ghost sm" onClick={() => handleOpenEditCat(c)} style={{ marginRight: 4 }}>✏️</button>
+                        <button className="btn ghost sm" onClick={() => handleDeleteCat(c)} style={{ color: "var(--red)" }}>🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Add / Edit Category Form */}
+            <Card style={{ padding: 14, background: "rgba(255,204,0,0.04)", border: "1px solid var(--border)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: "var(--fg)" }}>
+                {editingCat ? `✏️ Edit Category — ${editingCat.name}` : "➕ Add New Phone Category Tier"}
+              </div>
+              <form onSubmit={handleSaveCat} className="stack" style={{ gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <Field label="Category Name *">
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. iPhone Executive (₹65k)"
+                      value={catForm.name}
+                      onChange={(e) => setCatForm({ ...catForm, name: e.target.value })}
+                    />
+                  </Field>
+
+                  <Field label="Policy Budget (₹) *">
+                    <input
+                      type="number"
+                      required
+                      placeholder="e.g. 65000"
+                      value={catForm.budget}
+                      onChange={(e) => setCatForm({ ...catForm, budget: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: 10 }}>
+                  <Field label="Icon Emoji">
+                    <input
+                      type="text"
+                      placeholder="🍏 or 🤖"
+                      value={catForm.icon}
+                      onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })}
+                    />
+                  </Field>
+
+                  <Field label="Tier Description">
+                    <input
+                      type="text"
+                      placeholder="e.g. Senior Leadership & Executive Tier"
+                      value={catForm.description}
+                      onChange={(e) => setCatForm({ ...catForm, description: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+                  {editingCat && (
+                    <button type="button" className="btn ghost sm" onClick={() => handleOpenAddCat()}>
+                      Cancel Edit
+                    </button>
+                  )}
+                  <button type="submit" className="btn sm primary" disabled={savingCat}>
+                    {savingCat ? "Saving..." : editingCat ? "Update Category" : "Add Category"}
+                  </button>
+                </div>
+              </form>
+            </Card>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" className="btn ghost" onClick={() => setCatModalOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
     </Shell>

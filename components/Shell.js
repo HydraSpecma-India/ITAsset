@@ -21,6 +21,16 @@ export function isPhoneModuleAuthorized(profile) {
   return false;
 }
 
+export function canManagePhoneAllocations(profile) {
+  if (!profile) return false;
+  const role = profile.role;
+  if (role === "admin") return true;
+  const isDeptAdminRole = role === "dept_admin" || role === "admin";
+  if (isDeptAdminRole && profile.department === "IT") return true;
+  if (profile.dept_permissions?.IT === "admin") return true;
+  return false;
+}
+
 const NAV = [
   { group: "Overview", items: [
     { href: "/dashboard", label: "Dashboard", ico: "◈", hideForEmployee: true },
