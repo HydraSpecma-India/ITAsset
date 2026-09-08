@@ -1961,7 +1961,7 @@ export default function GeneralAssetsPage() {
                       <td style={{ padding: "4px 6px" }}>{item.department}</td>
                       <td style={{ padding: "4px 6px", fontWeight: 600, color: "#2563eb" }}>{item.asset_category || item.phone_category || item.laptop_category}</td>
                       <td style={{ padding: "4px 6px" }}>{item.proposed_device || "—"}</td>
-                      <td style={{ padding: "4px 6px", textAlign: "right", fontWeight 700 }}>
+                      <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>
                         ₹{Number(item.budget_amount).toLocaleString()}
                       </td>
                     </tr>
