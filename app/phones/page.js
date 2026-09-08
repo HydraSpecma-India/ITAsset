@@ -466,12 +466,15 @@ export default function PhonesPage() {
       let insertedCount = 0;
 
       for (const r of gridRows) {
-        if (!r.employee_name || !r.employee_name.trim()) continue;
+        const empName = (r.employee_name || "").trim();
+        if (!empName) continue;
+
+        const empDept = r.department || (dept === "All" ? "IT" : dept);
 
         const payload = {
-          employee_name: r.employee_name.trim(),
+          employee_name: empName,
           employee_code: (r.employee_code || "").trim() || null,
-          department: r.department || (dept === "All" ? "IT" : dept),
+          department: empDept,
           phone_category: r.phone_category || "Android Standard (₹25k)",
           budget_amount: Number(r.budget_amount || 25000),
           eligible_date: r.eligible_date || null,
@@ -481,7 +484,7 @@ export default function PhonesPage() {
           serial_imei: (r.serial_imei || "").trim() || null,
           status: r.status || "Eligible",
           remarks: (r.remarks || "").trim() || null,
-          budget_department: r.department || (dept === "All" ? "IT" : dept),
+          budget_department: empDept,
           updated_at: new Date().toISOString(),
         };
 
@@ -514,6 +517,7 @@ export default function PhonesPage() {
       }
 
       setGridMode(false);
+      setDeptFilter("All");
       await loadData();
       alert(`Grid changes saved successfully! (${updatedCount} updated, ${insertedCount} created)`);
     } catch (err) {
@@ -526,27 +530,30 @@ export default function PhonesPage() {
 
   async function handleSave(e) {
     if (e) e.preventDefault();
-    if (!form.employee_name.trim()) {
+    const empName = (form.employee_name || "").trim();
+    if (!empName) {
       alert("Please enter Employee Name.");
       return;
     }
 
     setSaving(true);
 
+    const empDept = form.department || (dept === "All" ? "IT" : dept);
+
     const payload = {
-      employee_name: form.employee_name.trim(),
-      employee_code: form.employee_code.trim() || null,
-      department: form.department || (dept === "All" ? "IT" : dept),
-      phone_category: form.phone_category,
+      employee_name: empName,
+      employee_code: (form.employee_code || "").trim() || null,
+      department: empDept,
+      phone_category: form.phone_category || "Android Standard (₹25k)",
       budget_amount: Number(form.budget_amount || 25000),
       eligible_date: form.eligible_date || null,
       received_date: form.received_date || null,
       expiry_date: form.expiry_date || null,
-      device_details: form.device_details.trim() || null,
-      serial_imei: form.serial_imei.trim() || null,
-      status: form.status,
-      remarks: form.remarks.trim() || null,
-      budget_department: form.department || (dept === "All" ? "IT" : dept),
+      device_details: (form.device_details || "").trim() || null,
+      serial_imei: (form.serial_imei || "").trim() || null,
+      status: form.status || "Eligible",
+      remarks: (form.remarks || "").trim() || null,
+      budget_department: empDept,
       updated_at: new Date().toISOString(),
     };
 
@@ -560,6 +567,11 @@ export default function PhonesPage() {
       }
 
       setModalOpen(false);
+
+      if (deptFilter !== "All" && deptFilter !== empDept) {
+        setDeptFilter("All");
+      }
+
       await loadData();
     } catch (err) {
       console.error("Save phone allocation error:", err);
