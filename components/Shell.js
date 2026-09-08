@@ -38,10 +38,14 @@ const NAV = [
     { href: "/expiry", label: "Expiry & Renewals", ico: "⏱", hideForEmployee: true },
     { href: "/planning", label: "Next Year Budget", ico: "◇", hideForEmployee: true },
   ]},
+  { group: "Allocations", items: [
+    { href: "/phones", label: "Phone Allocation", ico: "📱", phoneAuthOnly: true },
+    { href: "/laptops", label: "Laptop Allocation", ico: "💻", phoneAuthOnly: true },
+    { href: "/general-assets", label: "General IT Assets", ico: "⌨️", phoneAuthOnly: true },
+  ]},
   { group: "Records", items: [
     { href: "/invoices", label: "Invoices", ico: "▦", hideForEmployee: true },
     { href: "/assets", label: "Asset Register", ico: "▧" },
-    { href: "/phones", label: "Phone Allocation", ico: "📱", phoneAuthOnly: true },
     { href: "/employees", label: "Employees & Depts", ico: "👥", globalAdminOnly: true },
   ]},
   { group: "Setup", items: [

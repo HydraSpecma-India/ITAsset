@@ -1,0 +1,1445 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Shell, { isPhoneModuleAuthorized, canManagePhoneAllocations } from "@/components/Shell";
+import { Card, Field, Modal, Empty } from "@/components/ui";
+import { supabase } from "@/lib/supabase";
+import { money, dateStr, todayISO, daysUntil, csvDownload } from "@/lib/format";
+import { useAuth } from "@/lib/session";
+import { useDept } from "@/lib/department";
+
+const DEFAULT_LAPTOP_TIERS = [
+  { id: "Executive / MacBook Tier (₹1.5L)", label: "Executive / MacBook Tier (Budget ₹1,50,000)", budget: 150000, icon: "💻", desc: "Executive Leadership & Senior Mgmt (Budget: ₹1,50,000)" },
+  { id: "Engineering / Design Tier (₹90k)", label: "Engineering / Design Tier (Budget ₹90,000)", budget: 90000, icon: "🖥️", desc: "High-Performance Workstation Tier (Budget: ₹90,000)" },
+  { id: "Standard Office Laptop Tier (₹50k)", label: "Standard Office Laptop Tier (Budget ₹50,000)", budget: 50000, icon: "💻", desc: "Standard Administrative & Operations Tier (Budget: ₹50,000)" },
+];
+
+const STATUS_OPTIONS = [
+  "Active",
+  "Eligible",
+  "Applied",
+  "Expiring Soon",
+  "Expired",
+  "Not Eligible",
+];
+
+const blankForm = (defaultDept = "IT") => ({
+  employee_name: "",
+  employee_code: "",
+  department: defaultDept,
+  laptop_category: "Engineering / Design Tier (₹90k)",
+  budget_amount: 90000,
+  eligible_date: todayISO(),
+  received_date: "",
+  expiry_date: "",
+  device_details: "",
+  serial_imei: "",
+  status: "Eligible",
+  remarks: "",
+});
+
+function formatDateDDMMMYYYY(dStr) {
+  if (!dStr) return "—";
+  try {
+    const d = new Date(dStr);
+    if (isNaN(d.getTime())) return dStr;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  } catch (err) {
+    return dStr;
+  }
+}
+
+function getDeviceMake(details = "") {
+  const str = String(details).toLowerCase();
+  if (str.includes("macbook") || str.includes("apple") || str.includes("mac")) return "Apple";
+  if (str.includes("thinkpad") || str.includes("lenovo")) return "Lenovo";
+  if (str.includes("dell") || str.includes("latitude") || str.includes("xps") || str.includes("precision")) return "Dell";
+  if (str.includes("hp") || str.includes("elitebook") || str.includes("probook") || str.includes("zbook")) return "HP";
+  if (str.includes("asus")) return "Asus";
+  return "HydraSpecma Workstation";
+}
+
+export default function LaptopsPage() {
+  const { profile } = useAuth();
+  const { dept, isDeptAdmin, departments } = useDept();
+  
+  const canEdit = canManagePhoneAllocations(profile);
+
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [tierFilter, setTierFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [deptFilter, setDeptFilter] = useState(dept || "All");
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState(null);
+  const [form, setForm] = useState(blankForm(dept === "All" ? "IT" : dept));
+  const [saving, setSaving] = useState(false);
+
+  // Categories State
+  const [categories, setCategories] = useState([]);
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [editingCat, setEditingCat] = useState(null);
+  const [catForm, setCatForm] = useState({ name: "", budget: 90000, icon: "💻", description: "" });
+  const [savingCat, setSavingCat] = useState(false);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("it_laptop_categories")
+        .select("*")
+        .eq("is_active", true)
+        .order("budget", { ascending: false });
+      if (data && data.length > 0) {
+        setCategories(data);
+      }
+    } catch (err) {
+      console.error("Failed to load laptop categories:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
+  const LAPTOP_TIERS = useMemo(() => {
+    if (categories.length > 0) {
+      return categories.map((c) => ({
+        id: c.name,
+        label: `${c.name} (Budget ₹${Number(c.budget).toLocaleString()})`,
+        budget: Number(c.budget),
+        icon: c.icon || "💻",
+        desc: c.description || `Budget: ₹${Number(c.budget).toLocaleString()}`,
+        raw: c,
+      }));
+    }
+    return DEFAULT_LAPTOP_TIERS;
+  }, [categories]);
+
+  // Employee Master Lookup State
+  const [masterEmployees, setMasterEmployees] = useState([]);
+  const [empSearchQuery, setEmpSearchQuery] = useState("");
+  const [empDropdownOpen, setEmpDropdownOpen] = useState(false);
+
+  const loadMasterEmployees = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("it_employees")
+        .select("id, full_name, email, department, job_title")
+        .eq("is_active", true)
+        .order("full_name");
+      setMasterEmployees(data || []);
+    } catch (err) {
+      console.error("Failed to load employee master:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMasterEmployees();
+  }, [loadMasterEmployees]);
+
+  const filteredMasterEmployees = useMemo(() => {
+    if (!empSearchQuery.trim()) return masterEmployees.slice(0, 30);
+    const sq = empSearchQuery.toLowerCase();
+    return masterEmployees
+      .filter(
+        (e) =>
+          (e.full_name || "").toLowerCase().includes(sq) ||
+          (e.email || "").toLowerCase().includes(sq) ||
+          (e.department || "").toLowerCase().includes(sq) ||
+          (e.job_title || "").toLowerCase().includes(sq)
+      )
+      .slice(0, 30);
+  }, [masterEmployees, empSearchQuery]);
+
+  const allDepartmentsList = useMemo(() => {
+    const set = new Set([
+      ...departments,
+      ...masterEmployees.map((e) => e.department).filter(Boolean),
+      ...rows.map((r) => r.department).filter(Boolean),
+    ]);
+    return Array.from(set).sort();
+  }, [departments, masterEmployees, rows]);
+
+  // Grid Inline Mode State
+  const [gridMode, setGridMode] = useState(false);
+  const [gridRows, setGridRows] = useState([]);
+  const [savingGrid, setSavingGrid] = useState(false);
+
+  // Printable Modal States
+  const [printRow, setPrintRow] = useState(null);
+
+  // Proposal State
+  const [proposalModalOpen, setProposalModalOpen] = useState(false);
+  const [proposalData, setProposalData] = useState({
+    employee_name: "",
+    employee_code: "",
+    department: "IT",
+    location: "Oragadam",
+    laptop_category: "Engineering / Design Tier (₹90k)",
+    budget_amount: 90000,
+    proposed_device: "Dell Precision Workstation i7 32GB 1TB SSD",
+    justification: "Required for CAD/Engineering design work and department mobility entitlement.",
+    proposal_date: todayISO(),
+  });
+  const [proposalPrintRow, setProposalPrintRow] = useState(null);
+
+  function handleOpenProposal(catName = "Engineering / Design Tier (₹90k)") {
+    const selectedCatObj = LAPTOP_TIERS.find((t) => t.id === catName) || LAPTOP_TIERS[0];
+    setProposalData({
+      employee_name: "",
+      employee_code: "",
+      department: dept === "All" ? "IT" : dept,
+      location: "Oragadam",
+      laptop_category: selectedCatObj ? selectedCatObj.id : catName,
+      budget_amount: selectedCatObj ? selectedCatObj.budget : 90000,
+      proposed_device: selectedCatObj ? `${selectedCatObj.id} Workstation` : "Laptop Workstation",
+      justification: "Required for engineering design, corporate computing and policy entitlement.",
+      proposal_date: todayISO(),
+    });
+    setEmpSearchQuery("");
+    setEmpDropdownOpen(false);
+    setProposalModalOpen(true);
+  }
+
+  function handleGenerateProposalPrint(e) {
+    if (e) e.preventDefault();
+    if (!proposalData.employee_name.trim()) {
+      alert("Please enter or select Employee Name for the Laptop Proposal.");
+      return;
+    }
+    setProposalPrintRow({ ...proposalData });
+    setProposalModalOpen(false);
+  }
+
+  useEffect(() => {
+    setDeptFilter(dept);
+  }, [dept]);
+
+  const loadData = useCallback(async () => {
+    if (!profile) return;
+    setLoading(true);
+
+    try {
+      let query = supabase.from("it_laptop_allocations").select("*").order("created_at", { ascending: false });
+
+      const activeDept = deptFilter || dept;
+      if (activeDept && activeDept !== "All") {
+        query = query.or(`department.eq.${activeDept},budget_department.eq.${activeDept}`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setRows(data || []);
+    } catch (err) {
+      console.error("Failed to load laptop allocations:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [profile, deptFilter, dept]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Filter rows
+  const filtered = useMemo(() => {
+    return rows.filter((r) => {
+      if (tierFilter !== "all") {
+        const catName = (r.laptop_category || "").toLowerCase().trim();
+        const filterName = (tierFilter || "").toLowerCase().trim();
+        if (catName !== filterName && !catName.includes(filterName) && !filterName.includes(catName)) {
+          return false;
+        }
+      }
+      if (statusFilter !== "all") {
+        if (statusFilter === "Expired") {
+          const isExp = r.status === "Expired" || (r.expiry_date && new Date(r.expiry_date) < new Date());
+          if (!isExp) return false;
+        } else if (r.status !== statusFilter) {
+          return false;
+        }
+      }
+      if (!q.trim()) return true;
+      const search = q.toLowerCase();
+      return [
+        r.employee_name,
+        r.employee_code,
+        r.department,
+        r.laptop_category,
+        r.device_details,
+        r.serial_imei,
+        r.remarks,
+        r.status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(search);
+    });
+  }, [rows, tierFilter, statusFilter, q]);
+
+  // KPIs
+  const kpis = useMemo(() => {
+    const totalCount = rows.length;
+    let activeCount = 0;
+    let eligibleCount = 0;
+    let expiredCount = 0;
+    let totalBudgetCommitment = 0;
+
+    rows.forEach((r) => {
+      const b = Number(r.budget_amount || 0);
+      totalBudgetCommitment += b;
+
+      const isExp = r.status === "Expired" || (r.expiry_date && new Date(r.expiry_date) < new Date());
+      if (isExp) {
+        expiredCount++;
+      } else if (r.status === "Active") {
+        activeCount++;
+      } else if (r.status === "Eligible" || r.status === "Applied") {
+        eligibleCount++;
+      }
+    });
+
+    return { totalCount, activeCount, eligibleCount, expiredCount, totalBudgetCommitment };
+  }, [rows]);
+
+  function handleOpenAdd() {
+    setEditingRow(null);
+    const targetDept = dept === "All" ? (profile?.department || "IT") : dept;
+    setForm(blankForm(targetDept));
+    setEmpSearchQuery("");
+    setEmpDropdownOpen(false);
+    setModalOpen(true);
+  }
+
+  function handleOpenEdit(r) {
+    setEditingRow(r);
+    setForm({
+      employee_name: r.employee_name || "",
+      employee_code: r.employee_code || "",
+      department: r.department || (dept === "All" ? "IT" : dept),
+      laptop_category: r.laptop_category || "Engineering / Design Tier (₹90k)",
+      budget_amount: r.budget_amount || 90000,
+      eligible_date: r.eligible_date || "",
+      received_date: r.received_date || "",
+      expiry_date: r.expiry_date || "",
+      device_details: r.device_details || "",
+      serial_imei: r.serial_imei || "",
+      status: r.status || "Eligible",
+      remarks: r.remarks || "",
+    });
+    setEmpSearchQuery(r.employee_name || "");
+    setEmpDropdownOpen(false);
+    setModalOpen(true);
+  }
+
+  function handleOpenPrintForm(r) {
+    setPrintRow(r);
+  }
+
+  // Calculate 4 years expiry from issue date for laptops
+  function handleReceivedDateChange(dateValue) {
+    let expDate = "";
+    if (dateValue) {
+      try {
+        const d = new Date(dateValue);
+        d.setFullYear(d.getFullYear() + 4);
+        expDate = d.toISOString().split("T")[0];
+      } catch (err) {
+        expDate = "";
+      }
+    }
+    setForm((prev) => ({
+      ...prev,
+      received_date: dateValue,
+      expiry_date: expDate || prev.expiry_date,
+      status: dateValue ? "Active" : prev.status,
+    }));
+  }
+
+  function enableGridMode() {
+    setGridRows(
+      rows.map((r) => ({
+        ...r,
+        tempId: r.id,
+      }))
+    );
+    setGridMode(true);
+  }
+
+  function cancelGridMode() {
+    setGridMode(false);
+    setGridRows([]);
+  }
+
+  function addGridRow() {
+    const targetDept = dept === "All" ? (profile?.department || "IT") : dept;
+    const newRow = {
+      tempId: "new_" + Date.now(),
+      isNew: true,
+      employee_name: "",
+      employee_code: "",
+      department: targetDept,
+      laptop_category: "Engineering / Design Tier (₹90k)",
+      budget_amount: 90000,
+      eligible_date: todayISO(),
+      received_date: "",
+      expiry_date: "",
+      device_details: "",
+      serial_imei: "",
+      status: "Eligible",
+      remarks: "",
+    };
+    setGridRows((prev) => [newRow, ...prev]);
+  }
+
+  async function saveGridChanges() {
+    setSavingGrid(true);
+    try {
+      let updatedCount = 0;
+      let insertedCount = 0;
+
+      for (const r of gridRows) {
+        const empName = (r.employee_name || "").trim();
+        if (!empName) continue;
+
+        const empDept = r.department || (dept === "All" ? "IT" : dept);
+
+        const payload = {
+          employee_name: empName,
+          employee_code: (r.employee_code || "").trim() || null,
+          department: empDept,
+          laptop_category: r.laptop_category || "Engineering / Design Tier (₹90k)",
+          budget_amount: Number(r.budget_amount || 90000),
+          eligible_date: r.eligible_date || null,
+          received_date: r.received_date || null,
+          expiry_date: r.expiry_date || null,
+          device_details: (r.device_details || "").trim() || null,
+          serial_imei: (r.serial_imei || "").trim() || null,
+          status: r.status || "Eligible",
+          remarks: (r.remarks || "").trim() || null,
+          budget_department: empDept,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (r.isNew || !r.id) {
+          const { error } = await supabase.from("it_laptop_allocations").insert(payload);
+          if (error) throw error;
+          insertedCount++;
+        } else {
+          const { error } = await supabase.from("it_laptop_allocations").update(payload).eq("id", r.id);
+          if (error) throw error;
+          updatedCount++;
+        }
+      }
+
+      setGridMode(false);
+      setDeptFilter("All");
+      await loadData();
+      alert(`Laptop grid changes saved successfully! (${updatedCount} updated, ${insertedCount} created)`);
+    } catch (err) {
+      console.error("Save grid error:", err);
+      alert("Failed to save grid changes: " + (err.message || String(err)));
+    } finally {
+      setSavingGrid(false);
+    }
+  }
+
+  async function handleSave(e) {
+    if (e) e.preventDefault();
+    const empName = (form.employee_name || "").trim();
+    if (!empName) {
+      alert("Please enter Employee Name.");
+      return;
+    }
+
+    setSaving(true);
+    const empDept = form.department || (dept === "All" ? "IT" : dept);
+
+    const payload = {
+      employee_name: empName,
+      employee_code: (form.employee_code || "").trim() || null,
+      department: empDept,
+      laptop_category: form.laptop_category || "Engineering / Design Tier (₹90k)",
+      budget_amount: Number(form.budget_amount || 90000),
+      eligible_date: form.eligible_date || null,
+      received_date: form.received_date || null,
+      expiry_date: form.expiry_date || null,
+      device_details: (form.device_details || "").trim() || null,
+      serial_imei: (form.serial_imei || "").trim() || null,
+      status: form.status || "Eligible",
+      remarks: (form.remarks || "").trim() || null,
+      budget_department: empDept,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      if (editingRow?.id) {
+        const { error } = await supabase.from("it_laptop_allocations").update(payload).eq("id", editingRow.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("it_laptop_allocations").insert(payload);
+        if (error) throw error;
+      }
+
+      setModalOpen(false);
+      if (deptFilter !== "All" && deptFilter !== empDept) {
+        setDeptFilter("All");
+      }
+      await loadData();
+    } catch (err) {
+      console.error("Save laptop allocation error:", err);
+      alert("Failed to save allocation: " + (err.message || String(err)));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(r) {
+    if (!confirm(`Are you sure you want to delete laptop record for ${r.employee_name}?`)) return;
+    try {
+      const { error } = await supabase.from("it_laptop_allocations").delete().eq("id", r.id);
+      if (error) throw error;
+      await loadData();
+    } catch (err) {
+      alert("Delete failed: " + err.message);
+    }
+  }
+
+  function handleExportCsv() {
+    csvDownload(
+      `laptop-allocation-register-${dept || "all"}.csv`,
+      filtered.map((r) => ({
+        "Employee Name": r.employee_name,
+        "Employee Code": r.employee_code || "—",
+        Department: r.department,
+        "Laptop Category Tier": r.laptop_category,
+        "Policy Budget (INR)": r.budget_amount,
+        "Eligible Date": r.eligible_date ? dateStr(r.eligible_date) : "—",
+        "Received Date": r.received_date ? dateStr(r.received_date) : "—",
+        "Policy Expiry Date (4Y)": r.expiry_date ? dateStr(r.expiry_date) : "—",
+        Status: r.status,
+        "Device Details": r.device_details || "—",
+        "Serial / Asset Tag": r.serial_imei || "—",
+        Remarks: r.remarks || "—",
+      }))
+    );
+  }
+
+  const isAuthorized = isPhoneModuleAuthorized(profile);
+
+  if (profile && !isAuthorized) {
+    return (
+      <Shell title="💻 Laptop Allocation" subtitle="Device Eligibility & Policy Management">
+        <Card style={{ textAlign: "center", padding: "50px 20px", marginTop: 24, maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
+          <div style={{ fontSize: 52, marginBottom: 16 }}>🔒</div>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--fg)", marginBottom: 10 }}>Access Restricted</h2>
+          <p style={{ color: "var(--muted)", lineHeight: 1.6, marginBottom: 24, fontSize: 14 }}>
+            The <strong>Laptop Allocation</strong> module is restricted to authorized roles.
+          </p>
+        </Card>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell
+      title="💻 Laptop Allocation Module"
+      subtitle={`${dept === "All" ? "All Departments" : dept} employee laptop eligibility matrix, workstation tiers (Executive ₹1.5L, Engineering ₹90k, Staff ₹50k) & policy renewal tracking`}
+      actions={
+        gridMode ? (
+          <>
+            <button className="btn sm" onClick={addGridRow} style={{ background: "#2563eb", color: "#fff" }}>
+              ➕ Add Quick Row
+            </button>
+            <button className="btn sm primary" onClick={saveGridChanges} disabled={savingGrid}>
+              {savingGrid ? "Saving..." : "💾 Save All Changes"}
+            </button>
+            <button className="btn ghost sm" onClick={cancelGridMode}>
+              ✕ Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn ghost sm"
+              onClick={() => handleOpenProposal("Engineering / Design Tier (₹90k)")}
+              style={{ borderColor: "var(--gold)", color: "var(--gold)", fontWeight: 600 }}
+            >
+              📄 Laptop Proposal Form
+            </button>
+            <button className="btn ghost sm" onClick={handleExportCsv}>
+              Export CSV
+            </button>
+            {canEdit && (
+              <>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => setCatModalOpen(true)}
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  ⚙️ Manage Categories
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={enableGridMode}
+                  style={{ borderColor: "var(--gold)", color: "var(--gold)", fontWeight: 600 }}
+                >
+                  ✏️ Inline Grid Edit
+                </button>
+                <button className="btn sm" onClick={handleOpenAdd}>
+                  + New Allocation
+                </button>
+              </>
+            )}
+          </>
+        )
+      }
+    >
+      {!canEdit && (
+        <div style={{ padding: "10px 16px", background: "rgba(255,204,0,0.1)", border: "1px solid var(--gold)", borderRadius: 8, color: "var(--gold)", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+          <span>ℹ️</span> View-Only Mode: You have read-only access for Laptop Allocation records.
+        </div>
+      )}
+
+      {/* KPI Header Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 20 }}>
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Total Laptop Allocations
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "var(--fg)" }}>{kpis.totalCount}</div>
+        </Card>
+
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Active Issued Laptops
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "#10b981" }}>{kpis.activeCount}</div>
+        </Card>
+
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Eligible / Pending
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "#8b5cf6" }}>{kpis.eligibleCount}</div>
+        </Card>
+
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Expired / Renewal Due (4Y)
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "#ef4444" }}>{kpis.expiredCount}</div>
+        </Card>
+
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Policy Budget Commitment
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "var(--gold)" }}>
+            {money(kpis.totalBudgetCommitment)}
+          </div>
+        </Card>
+      </div>
+
+      {/* Laptop Category Quick Filters */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginBottom: 20 }}>
+        <Card
+          onClick={() => setTierFilter("all")}
+          style={{
+            padding: 14,
+            cursor: "pointer",
+            border: tierFilter === "all" ? "2px solid var(--gold)" : "1px solid var(--border)",
+            background: tierFilter === "all" ? "rgba(255,204,0,0.1)" : "var(--bg-card)",
+            boxShadow: tierFilter === "all" ? "0 0 10px rgba(255,204,0,0.2)" : "none",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 20 }}>🌐</span>
+            <span
+              style={{
+                fontSize: 12,
+                padding: "2px 8px",
+                borderRadius: 12,
+                background: tierFilter === "all" ? "var(--gold)" : "rgba(255,255,255,0.08)",
+                color: tierFilter === "all" ? "#000000" : "var(--fg)",
+                fontWeight: 700,
+              }}
+            >
+              {tierFilter === "all" ? "✓ All Selected" : `${rows.length} Total`}
+            </span>
+          </div>
+          <div style={{ fontWeight: 700, marginTop: 8, fontSize: 14, color: tierFilter === "all" ? "var(--gold)" : "var(--fg)" }}>
+            All Laptop Categories
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Click to view all laptop records</div>
+        </Card>
+
+        {LAPTOP_TIERS.map((tier) => {
+          const isActiveFilter = tierFilter === tier.id;
+          const count = rows.filter((r) => {
+            const cat = (r.laptop_category || "").toLowerCase().trim();
+            const tid = (tier.id || "").toLowerCase().trim();
+            return cat === tid || cat.includes(tid) || tid.includes(cat);
+          }).length;
+
+          return (
+            <Card
+              key={tier.id}
+              onClick={() => setTierFilter(isActiveFilter ? "all" : tier.id)}
+              style={{
+                padding: 14,
+                cursor: "pointer",
+                border: isActiveFilter ? "2px solid var(--gold)" : "1px solid var(--border)",
+                background: isActiveFilter ? "rgba(255,204,0,0.12)" : "var(--bg-card)",
+                boxShadow: isActiveFilter ? "0 0 12px rgba(255,204,0,0.25)" : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 20 }}>{tier.icon}</span>
+                <span
+                  style={{
+                    fontSize: 12,
+                    padding: "2px 8px",
+                    borderRadius: 12,
+                    background: isActiveFilter ? "var(--gold)" : "rgba(255,255,255,0.08)",
+                    color: isActiveFilter ? "#000000" : "var(--fg)",
+                    fontWeight: 700,
+                  }}
+                >
+                  {isActiveFilter ? `✓ ${count} Filtered` : `${count} Assigned`}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: isActiveFilter ? "var(--gold)" : "var(--fg)" }}>
+                  {tier.id}
+                </div>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenProposal(tier.id);
+                  }}
+                  style={{ fontSize: 10, padding: "2px 6px", borderColor: "var(--gold)", color: "var(--gold)", whiteSpace: "nowrap" }}
+                >
+                  📄 Proposal
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{tier.desc}</div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Filter and Search Bar */}
+      <Card style={{ padding: 14, marginBottom: 20 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+          <div style={{ flex: "1 1 240px" }}>
+            <input
+              type="text"
+              placeholder="🔍 Search employee name, code, serial/tag, specs..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <select
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+            >
+              <option value="All">All Departments</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+
+            <select
+              value={tierFilter}
+              onChange={(e) => setTierFilter(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+            >
+              <option value="all">All Laptop Tiers</option>
+              {LAPTOP_TIERS.map((t) => (
+                <option key={t.id} value={t.id}>{t.id}</option>
+              ))}
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+            >
+              <option value="all">All Statuses</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      {/* Main Table View */}
+      {loading ? (
+        <Card style={{ padding: 40, textAlign: "center" }}>
+          <div style={{ color: "var(--muted)" }}>Loading Laptop Allocations...</div>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Empty message="No laptop allocation records found." action={canEdit && <button className="btn sm" onClick={handleOpenAdd}>Add New Record</button>} />
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                <th style={{ padding: "10px 14px" }}>Employee</th>
+                <th style={{ padding: "10px 14px" }}>Department</th>
+                <th style={{ padding: "10px 14px" }}>Laptop Tier</th>
+                <th style={{ padding: "10px 14px" }}>Policy Budget</th>
+                <th style={{ padding: "10px 14px" }}>Eligible Date</th>
+                <th style={{ padding: "10px 14px" }}>Received Date</th>
+                <th style={{ padding: "10px 14px" }}>Policy Expiry (4Y)</th>
+                <th style={{ padding: "10px 14px" }}>Status</th>
+                <th style={{ padding: "10px 14px" }}>Workstation Specs / Tag</th>
+                <th style={{ padding: "10px 14px" }}>Remarks</th>
+                {canEdit && <th style={{ padding: "10px 14px", textAlign: "right" }}>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => {
+                const daysExp = r.expiry_date ? daysUntil(r.expiry_date) : null;
+                const isExp = r.status === "Expired" || (r.expiry_date && new Date(r.expiry_date) < new Date());
+
+                let statusPillClass = "gray";
+                if (isExp) statusPillClass = "red";
+                else if (r.status === "Active") statusPillClass = "green";
+                else if (r.status === "Expiring Soon") statusPillClass = "amber";
+                else if (r.status === "Eligible") statusPillClass = "blue";
+                else if (r.status === "Applied") statusPillClass = "violet";
+
+                return (
+                  <tr key={r.id} style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                    <td style={{ padding: "10px 14px" }}>
+                      <div style={{ fontWeight: 600, color: "var(--fg)" }}>{r.employee_name}</div>
+                      {r.employee_code && <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{r.employee_code}</div>}
+                    </td>
+                    <td style={{ padding: "10px 14px" }}>
+                      <span className="pill gray">{r.department}</span>
+                    </td>
+                    <td style={{ padding: "10px 14px", fontWeight: 500 }}>{r.laptop_category}</td>
+                    <td style={{ padding: "10px 14px", fontWeight: 700, color: "var(--gold)" }} className="mono">
+                      {money(r.budget_amount)}
+                    </td>
+                    <td style={{ padding: "10px 14px" }} className="mono">
+                      {r.eligible_date ? dateStr(r.eligible_date) : "—"}
+                    </td>
+                    <td style={{ padding: "10px 14px" }} className="mono">
+                      {r.received_date ? dateStr(r.received_date) : <span style={{ color: "var(--faint)", fontStyle: "italic" }}>Not Received</span>}
+                    </td>
+                    <td style={{ padding: "10px 14px" }} className="mono">
+                      {r.expiry_date ? (
+                        <div>
+                          <span>{dateStr(r.expiry_date)}</span>
+                          {daysExp !== null && (
+                            <div style={{ fontSize: 10, color: daysExp < 0 ? "var(--red)" : daysExp <= 60 ? "var(--amber)" : "var(--faint)" }}>
+                              {daysExp < 0 ? `Expired ${Math.abs(daysExp)}d ago` : `${daysExp}d remaining`}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 14px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                        <span className={`pill ${statusPillClass}`}>{isExp ? "Expired" : r.status}</span>
+                        <button
+                          type="button"
+                          className="btn ghost sm"
+                          onClick={() => handleOpenPrintForm(r)}
+                          style={{ fontSize: 11, padding: "2px 8px", borderColor: "var(--gold)", color: "var(--gold)", whiteSpace: "nowrap" }}
+                        >
+                          📄 Issue Form
+                        </button>
+                      </div>
+                    </td>
+                    <td style={{ padding: "10px 14px" }}>
+                      {r.device_details ? (
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{r.device_details}</div>
+                          {r.serial_imei && <div className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>Tag: {r.serial_imei}</div>}
+                        </div>
+                      ) : (
+                        <span style={{ color: "var(--faint)", fontStyle: "italic" }}>No Laptop Assigned</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 14px", color: "var(--muted)" }}>{r.remarks || "—"}</td>
+                    {canEdit && (
+                      <td style={{ padding: "10px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button className="btn ghost sm" onClick={() => handleOpenEdit(r)} style={{ marginRight: 6 }}>
+                          ✏️ Edit
+                        </button>
+                        <button className="btn ghost sm" onClick={() => handleDelete(r)} style={{ color: "var(--red)" }}>
+                          🗑️
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal for Adding/Editing Laptop Allocation */}
+      {modalOpen && (
+        <Modal
+          title={editingRow ? `✏️ Edit Laptop Allocation — ${editingRow.employee_name}` : "💻 Add New Laptop Allocation"}
+          onClose={() => setModalOpen(false)}
+        >
+          <form onSubmit={handleSave} className="stack" style={{ gap: 14 }}>
+            <div style={{ position: "relative" }}>
+              <label className="field-label" style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
+                👤 Select Employee from Master *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="🔍 Search employee from master..."
+                value={form.employee_name}
+                onFocus={() => setEmpDropdownOpen(true)}
+                onChange={(e) => {
+                  setForm({ ...form, employee_name: e.target.value });
+                  setEmpSearchQuery(e.target.value);
+                  setEmpDropdownOpen(true);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-input)",
+                  color: "var(--fg)",
+                }}
+              />
+              {empDropdownOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 999,
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    background: "#18181b",
+                    border: "1px solid var(--gold)",
+                    borderRadius: 8,
+                    padding: 4,
+                    marginTop: 4,
+                  }}
+                >
+                  {filteredMasterEmployees.map((emp) => (
+                    <div
+                      key={emp.id}
+                      onClick={() => {
+                        setForm((prev) => ({
+                          ...prev,
+                          employee_name: emp.full_name,
+                          employee_code: emp.email || prev.employee_code,
+                          department: emp.department || prev.department,
+                        }));
+                        setEmpDropdownOpen(false);
+                      }}
+                      style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 4 }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 12, color: "var(--fg)" }}>{emp.full_name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>🏢 {emp.department}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Department *">
+                <select
+                  value={form.department}
+                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                >
+                  {allDepartmentsList.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Laptop Category Tier *">
+                <select
+                  value={form.laptop_category}
+                  onChange={(e) => {
+                    const obj = LAPTOP_TIERS.find((t) => t.id === e.target.value);
+                    setForm({
+                      ...form,
+                      laptop_category: e.target.value,
+                      budget_amount: obj ? obj.budget : form.budget_amount,
+                    });
+                  }}
+                >
+                  {LAPTOP_TIERS.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label || t.id}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Policy Budget (₹)">
+                <input
+                  type="number"
+                  value={form.budget_amount}
+                  onChange={(e) => setForm({ ...form, budget_amount: e.target.value })}
+                />
+              </Field>
+
+              <Field label="Status">
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <Field label="Eligible Date">
+                <input type="date" value={form.eligible_date} onChange={(e) => setForm({ ...form, eligible_date: e.target.value })} />
+              </Field>
+
+              <Field label="Received Date (Issue Date)">
+                <input type="date" value={form.received_date} onChange={(e) => handleReceivedDateChange(e.target.value)} />
+              </Field>
+
+              <Field label="Policy Expiry Date (4Y)">
+                <input type="date" value={form.expiry_date} onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} />
+              </Field>
+            </div>
+
+            <Field label="Workstation Specs / Model">
+              <input
+                type="text"
+                placeholder="e.g. Dell Precision 5570 i7 32GB 1TB SSD RTX3000"
+                value={form.device_details}
+                onChange={(e) => setForm({ ...form, device_details: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Serial No / Asset Tag">
+              <input
+                type="text"
+                placeholder="e.g. HS-LAP-2026-0912"
+                value={form.serial_imei}
+                onChange={(e) => setForm({ ...form, serial_imei: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Remarks">
+              <textarea rows={2} value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
+            </Field>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+              <button type="button" className="btn ghost" onClick={() => setModalOpen(false)}>Cancel</button>
+              <button type="submit" className="btn" disabled={saving}>
+                {saving ? "Saving..." : editingRow ? "Save Changes" : "Create Allocation"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Printable Issue Form Modal */}
+      {printRow && (
+        <Modal
+          title={`📄 Official Laptop Issue Form — ${printRow.employee_name}`}
+          onClose={() => setPrintRow(null)}
+        >
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 10 }}>
+            <button className="btn sm primary" onClick={() => window.print()}>
+              🖨️ Print Document
+            </button>
+            <button className="btn ghost sm" onClick={() => setPrintRow(null)}>Close</button>
+          </div>
+
+          <div
+            id="printable-issue-form"
+            style={{
+              background: "#ffffff",
+              color: "#000000",
+              padding: "36px 44px 24px 44px",
+              borderRadius: 8,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              maxWidth: 740,
+              minHeight: 820,
+              margin: "0 auto",
+              border: "1px solid #e5e7eb",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              boxSizing: "border-box",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                <div>
+                  <img src="/hydraspecma-logo.png" alt="HydraSpecma Logo" style={{ height: 76, width: "auto", objectFit: "contain" }} />
+                </div>
+                <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>
+                    HYDRASPECMA INDIA PRIVATE LIMITED
+                  </div>
+                  <div>Plot No.130A, Greenbase Industrial and Logistics Park,</div>
+                  <div>Hiranandani Parks, Vadakkupattu Village,</div>
+                  <div>Kundrathur Taluk, Kancheepuram, Tamil Nadu - 603 204.</div>
+                  <div>E-mail : hsil.india@hydraspecma.com</div>
+                  <div>www.hydraspecma.com</div>
+                  <div>GSTIN: 33AABCH9436R1Z0</div>
+                </div>
+              </div>
+
+              <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "16px 0 24px" }} />
+
+              <div style={{ textAlign: "center", marginBottom: 28 }}>
+                <h2 style={{ fontSize: 22, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 6, margin: 0, color: "#000000" }}>
+                  Laptop / Workstation Issue Form
+                </h2>
+              </div>
+
+              <div style={{ marginBottom: 28, fontSize: 13, lineHeight: 2 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Name of Employee</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{printRow.employee_name}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Emp. ID / Email</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{printRow.employee_code || "—"}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Department</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{printRow.department}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Date of Issuance</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{formatDateDDMMMYYYY(printRow.received_date)}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Location</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>Oragadam</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 28, fontSize: 13, lineHeight: 2 }}>
+                <div style={{ marginBottom: 8, fontStyle: "italic" }}>I have received the following laptop workstation asset:</div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Workstation Model</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{printRow.device_details || printRow.laptop_category}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Make / OEM</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 600 }}>{getDeviceMake(printRow.device_details || printRow.laptop_category)}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Serial No / Tag</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 800, color: "#002060" }}>{printRow.serial_imei || "—"}</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 45, fontSize: 12, lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 6 }}>
+                  Declaration by Employee:
+                </div>
+                <p style={{ margin: 0, textIndent: 36 }}>
+                  I understand that I am responsible for the laptop workstation issued to me and that I will care for the device in such a manner as to prevent loss, damage or data compromise.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginTop: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28, fontSize: 13, fontWeight: 700 }}>
+                <div>
+                  <span>Employee Signature</span>
+                  <span style={{ display: "inline-block", width: 140, borderBottom: "2px double #2563eb", marginLeft: 16 }}></span>
+                </div>
+                <div>
+                  <span>IT Signature</span>
+                  <span style={{ display: "inline-block", width: 140, borderBottom: "1px solid #000000", marginLeft: 16 }}></span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5 }}>
+                <div>A Company in the HydraSpecma Group</div>
+                <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Proposal Modal */}
+      {proposalModalOpen && (
+        <Modal
+          title={`📄 Create Laptop Proposal — ${proposalData.laptop_category}`}
+          onClose={() => setProposalModalOpen(false)}
+        >
+          <form onSubmit={handleGenerateProposalPrint} className="stack" style={{ gap: 14 }}>
+            <div style={{ position: "relative" }}>
+              <label className="field-label" style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
+                👤 Employee Name *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Search employee from master..."
+                value={proposalData.employee_name}
+                onFocus={() => setEmpDropdownOpen(true)}
+                onChange={(e) => {
+                  setProposalData({ ...proposalData, employee_name: e.target.value });
+                  setEmpSearchQuery(e.target.value);
+                  setEmpDropdownOpen(true);
+                }}
+                style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+              />
+              {empDropdownOpen && (
+                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 999, maxHeight: 200, overflowY: "auto", background: "#18181b", border: "1px solid var(--gold)", borderRadius: 8, padding: 4, marginTop: 4 }}>
+                  {filteredMasterEmployees.map((emp) => (
+                    <div
+                      key={emp.id}
+                      onClick={() => {
+                        setProposalData((prev) => ({
+                          ...prev,
+                          employee_name: emp.full_name,
+                          employee_code: emp.email || prev.employee_code,
+                          department: emp.department || prev.department,
+                        }));
+                        setEmpDropdownOpen(false);
+                      }}
+                      style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 4 }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 12, color: "var(--fg)" }}>{emp.full_name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>🏢 {emp.department}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Department">
+                <select value={proposalData.department} onChange={(e) => setProposalData({ ...proposalData, department: e.target.value })}>
+                  {allDepartmentsList.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Laptop Category Tier *">
+                <select
+                  value={proposalData.laptop_category}
+                  onChange={(e) => {
+                    const obj = LAPTOP_TIERS.find((t) => t.id === e.target.value);
+                    setProposalData({
+                      ...proposalData,
+                      laptop_category: e.target.value,
+                      budget_amount: obj ? obj.budget : proposalData.budget_amount,
+                    });
+                  }}
+                >
+                  {LAPTOP_TIERS.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label || t.id}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <Field label="Proposed Workstation Model & Specs">
+              <input
+                type="text"
+                placeholder="e.g. Dell Precision i7 32GB 1TB SSD"
+                value={proposalData.proposed_device}
+                onChange={(e) => setProposalData({ ...proposalData, proposed_device: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Business Justification / Remarks">
+              <textarea rows={3} value={proposalData.justification} onChange={(e) => setProposalData({ ...proposalData, justification: e.target.value })} />
+            </Field>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+              <button type="button" className="btn ghost" onClick={() => setProposalModalOpen(false)}>Cancel</button>
+              <button type="submit" className="btn primary">📄 Generate & Print Laptop Proposal</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Printable Laptop Proposal Form */}
+      {proposalPrintRow && (
+        <Modal title={`📄 Laptop Proposal Form — ${proposalPrintRow.employee_name}`} onClose={() => setProposalPrintRow(null)}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 10 }}>
+            <button className="btn sm primary" onClick={() => window.print()}>🖨️ Print Proposal Document</button>
+            <button className="btn ghost sm" onClick={() => setProposalPrintRow(null)}>Close</button>
+          </div>
+
+          <div
+            id="printable-proposal-form"
+            style={{
+              background: "#ffffff",
+              color: "#000000",
+              padding: "36px 44px 24px 44px",
+              borderRadius: 8,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              maxWidth: 740,
+              minHeight: 820,
+              margin: "0 auto",
+              border: "1px solid #e5e7eb",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              boxSizing: "border-box",
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                <div><img src="/hydraspecma-logo.png" alt="HydraSpecma Logo" style={{ height: 76, width: "auto", objectFit: "contain" }} /></div>
+                <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>HYDRASPECMA INDIA PRIVATE LIMITED</div>
+                  <div>Plot No.130A, Greenbase Industrial and Logistics Park, Kancheepuram, Tamil Nadu - 603 204.</div>
+                  <div>E-mail : hsil.india@hydraspecma.com | www.hydraspecma.com</div>
+                  <div>GSTIN: 33AABCH9436R1Z0</div>
+                </div>
+              </div>
+
+              <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "16px 0 20px" }} />
+
+              <div style={{ textAlign: "center", marginBottom: 24 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 5, margin: 0, color: "#000000", textTransform: "uppercase" }}>
+                  Laptop Allocation Proposal
+                </h2>
+                <div style={{ fontSize: 11, color: "#555555", marginTop: 4, fontWeight: 600 }}>
+                  Ref: HS/IT/LAP-PROP/{new Date().getFullYear()} &nbsp;|&nbsp; Date: {formatDateDDMMMYYYY(proposalPrintRow.proposal_date)}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 24, fontSize: 13, lineHeight: 2 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Name of Employee</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.employee_name}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Emp. ID / Email</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.employee_code || "—"}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Department</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.department}</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 24, padding: 14, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 13, lineHeight: 2 }}>
+                <div style={{ fontWeight: 800, color: "#000000", borderBottom: "1px solid #d1d5db", paddingBottom: 4, marginBottom: 8 }}>
+                  💻 Proposed Laptop Workstation Tier
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Laptop Category Tier</span><span>:</span><span style={{ fontWeight: 800, color: "#2563eb" }}>{proposalPrintRow.laptop_category}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Policy Budget Limit</span><span>:</span><span style={{ fontWeight: 800, color: "#059669" }}>₹{Number(proposalPrintRow.budget_amount).toLocaleString()}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Proposed Specs</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.proposed_device || "—"}</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 35, fontSize: 12, lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 6 }}>Business Justification & Eligibility Note:</div>
+                <p style={{ margin: 0, padding: "10px 14px", borderLeft: "3px solid #2563eb", background: "#f8fafc" }}>
+                  {proposalPrintRow.justification || "Proposed as per company laptop policy and department workstation requirements."}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginTop: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 28, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <span>Proposed By (IT / HR)</span>
+                </div>
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <span>Department Head Approval</span>
+                </div>
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <span>Finance / Management Authorization</span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5 }}>
+                <div>A Company in the HydraSpecma Group</div>
+                <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Embedded CSS for Print Mode */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media print {
+              body * { visibility: hidden !important; }
+              #printable-issue-form, #printable-issue-form *,
+              #printable-proposal-form, #printable-proposal-form * { visibility: visible !important; }
+              #printable-issue-form, #printable-proposal-form {
+                position: fixed !important;
+                left: 0 !important; top: 0 !important;
+                width: 100% !important; height: 100% !important;
+                min-height: 275mm !important; margin: 0 !important;
+                padding: 30px 45px 24px 45px !important;
+                box-shadow: none !important; background: #ffffff !important;
+                color: #000000 !important; border: none !important;
+                display: flex !important; flex-direction: column !important;
+                justify-content: space-between !important; box-sizing: border-box !important;
+              }
+            }
+          `,
+        }}
+      />
+    </Shell>
+  );
+}
