@@ -432,6 +432,63 @@ export default function LaptopsPage() {
     setPrintRow(r);
   }
 
+  function handleOpenAddCat() {
+    setEditingCat(null);
+    setCatForm({ name: "", budget: 90000, icon: "💻", description: "" });
+  }
+
+  function handleOpenEditCat(c) {
+    setEditingCat(c);
+    setCatForm({
+      name: c.name || "",
+      budget: c.budget || 90000,
+      icon: c.icon || "💻",
+      description: c.description || "",
+    });
+  }
+
+  async function handleSaveCat(e) {
+    if (e) e.preventDefault();
+    if (!catForm.name.trim()) return alert("Category name is required.");
+    setSavingCat(true);
+
+    const payload = {
+      name: catForm.name.trim(),
+      budget: Number(catForm.budget || 0),
+      icon: catForm.icon.trim() || "💻",
+      description: catForm.description.trim() || null,
+      is_active: true,
+    };
+
+    try {
+      if (editingCat?.id) {
+        const { error } = await supabase.from("it_laptop_categories").update(payload).eq("id", editingCat.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("it_laptop_categories").insert(payload);
+        if (error) throw error;
+      }
+      await loadCategories();
+      setEditingCat(null);
+      setCatForm({ name: "", budget: 90000, icon: "💻", description: "" });
+    } catch (err) {
+      alert("Failed to save category: " + (err.message || String(err)));
+    } finally {
+      setSavingCat(false);
+    }
+  }
+
+  async function handleDeleteCat(c) {
+    if (!confirm(`Are you sure you want to delete laptop category "${c.name}"?`)) return;
+    try {
+      const { error } = await supabase.from("it_laptop_categories").delete().eq("id", c.id);
+      if (error) throw error;
+      await loadCategories();
+    } catch (err) {
+      alert("Failed to delete category: " + err.message);
+    }
+  }
+
   // Calculate 4 years expiry from issue date for laptops
   function handleReceivedDateChange(dateValue) {
     let expDate = "";
@@ -989,6 +1046,118 @@ export default function LaptopsPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Modal for Managing Laptop Categories & Tiers */}
+      {catModalOpen && (
+        <Modal
+          title="⚙️ Manage Laptop Categories & Budget Tiers"
+          onClose={() => setCatModalOpen(false)}
+        >
+          <div className="stack" style={{ gap: 16 }}>
+            <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.5 }}>
+              Manage active laptop workstation tiers, icon badges, default policy budget amounts, and tier descriptions.
+            </div>
+
+            {/* Category List */}
+            <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                    <th style={{ padding: "8px 10px" }}>Tier Icon & Name</th>
+                    <th style={{ padding: "8px 10px" }}>Budget Amount (₹)</th>
+                    <th style={{ padding: "8px 10px" }}>Description</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categories.map((c) => (
+                    <tr key={c.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 600 }}>
+                        <span style={{ fontSize: 16, marginRight: 6 }}>{c.icon || "💻"}</span> {c.name}
+                      </td>
+                      <td style={{ padding: "8px 10px", fontWeight: 700, color: "var(--gold)" }} className="mono">
+                        {money(c.budget)}
+                      </td>
+                      <td style={{ padding: "8px 10px", color: "var(--muted)" }}>{c.description || "—"}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button className="btn ghost sm" onClick={() => handleOpenEditCat(c)} style={{ marginRight: 4 }}>✏️</button>
+                        <button className="btn ghost sm" onClick={() => handleDeleteCat(c)} style={{ color: "var(--red)" }}>🗑️</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Add / Edit Category Form */}
+            <Card style={{ padding: 14, background: "rgba(255,204,0,0.04)", border: "1px solid var(--border)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: "var(--fg)" }}>
+                {editingCat ? `✏️ Edit Category — ${editingCat.name}` : "➕ Add New Laptop Category Tier"}
+              </div>
+              <form onSubmit={handleSaveCat} className="stack" style={{ gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <Field label="Category Name *">
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Executive MacBook Pro (₹1.8L)"
+                      value={catForm.name}
+                      onChange={(e) => setCatForm({ ...catForm, name: e.target.value })}
+                    />
+                  </Field>
+
+                  <Field label="Policy Budget (₹) *">
+                    <input
+                      type="number"
+                      required
+                      placeholder="e.g. 180000"
+                      value={catForm.budget}
+                      onChange={(e) => setCatForm({ ...catForm, budget: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "100px 1fr", gap: 10 }}>
+                  <Field label="Icon Emoji">
+                    <input
+                      type="text"
+                      placeholder="💻 or 🖥️"
+                      value={catForm.icon}
+                      onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })}
+                    />
+                  </Field>
+
+                  <Field label="Tier Description">
+                    <input
+                      type="text"
+                      placeholder="e.g. Executive Leadership & Senior Management Tier"
+                      value={catForm.description}
+                      onChange={(e) => setCatForm({ ...catForm, description: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+                  {editingCat && (
+                    <button type="button" className="btn ghost sm" onClick={() => handleOpenAddCat()}>
+                      Cancel Edit
+                    </button>
+                  )}
+                  <button type="submit" className="btn sm primary" disabled={savingCat}>
+                    {savingCat ? "Saving..." : editingCat ? "Update Category" : "Add Category"}
+                  </button>
+                </div>
+              </form>
+            </Card>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" className="btn ghost" onClick={() => setCatModalOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Modal for Adding/Editing Laptop Allocation */}
