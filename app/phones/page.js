@@ -212,7 +212,13 @@ export default function PhonesPage() {
   // Compute calculated values and filter rows
   const filtered = useMemo(() => {
     return rows.filter((r) => {
-      if (tierFilter !== "all" && r.phone_category !== tierFilter) return false;
+      if (tierFilter !== "all") {
+        const catName = (r.phone_category || "").toLowerCase().trim();
+        const filterName = (tierFilter || "").toLowerCase().trim();
+        if (catName !== filterName && !catName.includes(filterName) && !filterName.includes(catName)) {
+          return false;
+        }
+      }
       if (statusFilter !== "all") {
         if (statusFilter === "Expired") {
           const isExp = r.status === "Expired" || (r.expiry_date && new Date(r.expiry_date) < new Date());
@@ -781,10 +787,48 @@ export default function PhonesPage() {
       </div>
 
       {/* Model Tier Quick Filters */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 20 }}>
+        {/* All Tiers Option Card */}
+        <Card
+          onClick={() => setTierFilter("all")}
+          style={{
+            padding: 14,
+            cursor: "pointer",
+            border: tierFilter === "all" ? "2px solid var(--gold)" : "1px solid var(--border)",
+            background: tierFilter === "all" ? "rgba(255,204,0,0.1)" : "var(--bg-card)",
+            boxShadow: tierFilter === "all" ? "0 0 10px rgba(255,204,0,0.2)" : "none",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 20 }}>🌐</span>
+            <span
+              style={{
+                fontSize: 12,
+                padding: "2px 8px",
+                borderRadius: 12,
+                background: tierFilter === "all" ? "var(--gold)" : "rgba(255,255,255,0.08)",
+                color: tierFilter === "all" ? "#000000" : "var(--fg)",
+                fontWeight: 700,
+              }}
+            >
+              {tierFilter === "all" ? "✓ All Selected" : `${rows.length} Total`}
+            </span>
+          </div>
+          <div style={{ fontWeight: 700, marginTop: 8, fontSize: 14, color: tierFilter === "all" ? "var(--gold)" : "var(--fg)" }}>
+            All Phone Categories
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Click to view all employee allocations</div>
+        </Card>
+
         {PHONE_TIERS.map((tier) => {
           const isActiveFilter = tierFilter === tier.id;
-          const count = rows.filter((r) => r.phone_category === tier.id).length;
+          const count = rows.filter((r) => {
+            const cat = (r.phone_category || "").toLowerCase().trim();
+            const tid = (tier.id || "").toLowerCase().trim();
+            return cat === tid || cat.includes(tid) || tid.includes(cat);
+          }).length;
+
           return (
             <Card
               key={tier.id}
@@ -793,17 +837,29 @@ export default function PhonesPage() {
                 padding: 14,
                 cursor: "pointer",
                 border: isActiveFilter ? "2px solid var(--gold)" : "1px solid var(--border)",
-                background: isActiveFilter ? "rgba(255,204,0,0.06)" : "var(--bg-card)",
+                background: isActiveFilter ? "rgba(255,204,0,0.12)" : "var(--bg-card)",
+                boxShadow: isActiveFilter ? "0 0 12px rgba(255,204,0,0.25)" : "none",
                 transition: "all 0.15s ease",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 20 }}>{tier.icon}</span>
-                <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 12, background: "rgba(255,255,255,0.08)", fontWeight: 600 }}>
-                  {count} Assigned
+                <span
+                  style={{
+                    fontSize: 12,
+                    padding: "2px 8px",
+                    borderRadius: 12,
+                    background: isActiveFilter ? "var(--gold)" : "rgba(255,255,255,0.08)",
+                    color: isActiveFilter ? "#000000" : "var(--fg)",
+                    fontWeight: 700,
+                  }}
+                >
+                  {isActiveFilter ? `✓ ${count} Filtered` : `${count} Assigned`}
                 </span>
               </div>
-              <div style={{ fontWeight: 700, marginTop: 8, fontSize: 14, color: "var(--fg)" }}>{tier.id}</div>
+              <div style={{ fontWeight: 700, marginTop: 8, fontSize: 14, color: isActiveFilter ? "var(--gold)" : "var(--fg)" }}>
+                {tier.id}
+              </div>
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{tier.desc}</div>
             </Card>
           );
@@ -1637,8 +1693,12 @@ export default function PhonesPage() {
                 </p>
               </div>
 
+            </div>
+
+            {/* Bottom Container: Signatures & Footer Pinned to Bottom */}
+            <div style={{ marginTop: "auto" }}>
               {/* Signature Section */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 36, fontSize: 13, fontWeight: 700 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 28, fontSize: 13, fontWeight: 700 }}>
                 <div>
                   <span>Employee Signature</span>
                   <span style={{ display: "inline-block", width: 140, borderBottom: "2px double #2563eb", marginLeft: 16 }}></span>
@@ -1649,12 +1709,12 @@ export default function PhonesPage() {
                   <span style={{ display: "inline-block", width: 140, borderBottom: "1px solid #000000", marginLeft: 16 }}></span>
                 </div>
               </div>
-            </div>
 
-            {/* Footer Branding */}
-            <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5, marginTop: "auto" }}>
-              <div>A Company in the HydraSpecma Group</div>
-              <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
+              {/* Footer Branding */}
+              <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5 }}>
+                <div>A Company in the HydraSpecma Group</div>
+                <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
+              </div>
             </div>
           </div>
         </Modal>
