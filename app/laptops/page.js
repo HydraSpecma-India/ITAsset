@@ -174,46 +174,134 @@ export default function LaptopsPage() {
   // Printable Modal States
   const [printRow, setPrintRow] = useState(null);
 
-  // Proposal State
+  // Multi-Person Laptop Category Proposal Form State & Handlers
   const [proposalModalOpen, setProposalModalOpen] = useState(false);
-  const [proposalData, setProposalData] = useState({
-    employee_name: "",
-    employee_code: "",
-    department: "IT",
-    location: "Oragadam",
-    laptop_category: "Engineering / Design Tier (₹90k)",
-    budget_amount: 90000,
-    proposed_device: "Dell Precision Workstation i7 32GB 1TB SSD",
-    justification: "Required for CAD/Engineering design work and department mobility entitlement.",
-    proposal_date: todayISO(),
-  });
-  const [proposalPrintRow, setProposalPrintRow] = useState(null);
+  const [proposalTitle, setProposalTitle] = useState("Laptop Allocation & Purchase Proposal");
+  const [proposalJustification, setProposalJustification] = useState("Requested as per company laptop eligibility policy and department engineering/operational requirements.");
+  const [proposalDate, setProposalDate] = useState(todayISO());
+  const [proposalItems, setProposalItems] = useState([]);
+  const [proposalPrintData, setProposalPrintData] = useState(null);
+  const [proposalFocusIndex, setProposalFocusIndex] = useState(null);
 
-  function handleOpenProposal(catName = "Engineering / Design Tier (₹90k)") {
-    const selectedCatObj = LAPTOP_TIERS.find((t) => t.id === catName) || LAPTOP_TIERS[0];
-    setProposalData({
-      employee_name: "",
-      employee_code: "",
-      department: dept === "All" ? "IT" : dept,
-      location: "Oragadam",
-      laptop_category: selectedCatObj ? selectedCatObj.id : catName,
-      budget_amount: selectedCatObj ? selectedCatObj.budget : 90000,
-      proposed_device: selectedCatObj ? `${selectedCatObj.id} Workstation` : "Laptop Workstation",
-      justification: "Required for engineering design, corporate computing and policy entitlement.",
-      proposal_date: todayISO(),
-    });
-    setEmpSearchQuery("");
-    setEmpDropdownOpen(false);
+  function handleOpenProposal(catName = "all") {
+    let initialItems = [];
+    if (catName !== "all") {
+      const matchingRows = rows.filter((r) => {
+        const cat = (r.laptop_category || "").toLowerCase().trim();
+        const tid = (catName || "").toLowerCase().trim();
+        return cat === tid || cat.includes(tid) || tid.includes(cat);
+      });
+
+      if (matchingRows.length > 0) {
+        initialItems = matchingRows.map((r) => ({
+          tempId: r.id || "p_" + Math.random(),
+          employee_name: r.employee_name,
+          employee_code: r.employee_code || "",
+          department: r.department || "IT",
+          laptop_category: r.laptop_category,
+          budget_amount: Number(r.budget_amount || 90000),
+          proposed_device: r.device_details || `${r.laptop_category} Workstation`,
+        }));
+      }
+    }
+
+    if (initialItems.length === 0) {
+      const selectedCatObj = LAPTOP_TIERS.find((t) => t.id === catName) || LAPTOP_TIERS[0];
+      initialItems = [
+        {
+          tempId: "p_1",
+          employee_name: "",
+          employee_code: "",
+          department: dept === "All" ? "IT" : dept,
+          laptop_category: selectedCatObj ? selectedCatObj.id : "Engineering / Design Tier (₹90k)",
+          budget_amount: selectedCatObj ? selectedCatObj.budget : 90000,
+          proposed_device: selectedCatObj ? `${selectedCatObj.id} Workstation` : "Laptop Workstation",
+        },
+      ];
+    }
+
+    setProposalTitle(catName !== "all" ? `${catName} Allocation Proposal` : "Laptop Allocation & Purchase Proposal");
+    setProposalJustification("Requested as per company laptop eligibility policy and department engineering/operational requirements.");
+    setProposalDate(todayISO());
+    setProposalItems(initialItems);
+    setProposalFocusIndex(null);
     setProposalModalOpen(true);
+  }
+
+  function addProposalItem() {
+    const selectedCatObj = LAPTOP_TIERS[0];
+    setProposalItems((prev) => [
+      ...prev,
+      {
+        tempId: "p_" + Date.now() + "_" + Math.random(),
+        employee_name: "",
+        employee_code: "",
+        department: dept === "All" ? "IT" : dept,
+        laptop_category: selectedCatObj ? selectedCatObj.id : "Engineering / Design Tier (₹90k)",
+        budget_amount: selectedCatObj ? selectedCatObj.budget : 90000,
+        proposed_device: selectedCatObj ? `${selectedCatObj.id} Workstation` : "Laptop Workstation",
+      },
+    ]);
+  }
+
+  function updateProposalItem(index, field, val) {
+    setProposalItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const updated = { ...item, [field]: val };
+        if (field === "laptop_category") {
+          const catObj = LAPTOP_TIERS.find((t) => t.id === val);
+          if (catObj) {
+            updated.budget_amount = catObj.budget;
+            if (!updated.proposed_device || updated.proposed_device.includes("Workstation")) {
+              updated.proposed_device = `${catObj.id} Workstation`;
+            }
+          }
+        }
+        return updated;
+      })
+    );
+  }
+
+  function removeProposalItem(index) {
+    setProposalItems((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  function populateFilteredToProposal() {
+    if (filtered.length === 0) {
+      alert("No filtered employees found.");
+      return;
+    }
+    setProposalItems(
+      filtered.map((r) => ({
+        tempId: r.id || "p_" + Math.random(),
+        employee_name: r.employee_name,
+        employee_code: r.employee_code || "",
+        department: r.department || "IT",
+        laptop_category: r.laptop_category || "Engineering / Design Tier (₹90k)",
+        budget_amount: Number(r.budget_amount || 90000),
+        proposed_device: r.device_details || `${r.laptop_category} Workstation`,
+      }))
+    );
   }
 
   function handleGenerateProposalPrint(e) {
     if (e) e.preventDefault();
-    if (!proposalData.employee_name.trim()) {
-      alert("Please enter or select Employee Name for the Laptop Proposal.");
+    const validItems = proposalItems.filter((i) => (i.employee_name || "").trim());
+    if (validItems.length === 0) {
+      alert("Please add at least one employee to the Laptop Proposal.");
       return;
     }
-    setProposalPrintRow({ ...proposalData });
+
+    const totalBudget = validItems.reduce((acc, curr) => acc + Number(curr.budget_amount || 0), 0);
+
+    setProposalPrintData({
+      title: proposalTitle,
+      justification: proposalJustification,
+      proposal_date: proposalDate,
+      items: validItems,
+      totalBudget,
+    });
     setProposalModalOpen(false);
   }
 
@@ -570,7 +658,7 @@ export default function LaptopsPage() {
           <>
             <button
               className="btn ghost sm"
-              onClick={() => handleOpenProposal("Engineering / Design Tier (₹90k)")}
+              onClick={() => handleOpenProposal("all")}
               style={{ borderColor: "var(--gold)", color: "var(--gold)", fontWeight: 600 }}
             >
               📄 Laptop Proposal Form
@@ -1211,109 +1299,232 @@ export default function LaptopsPage() {
         </Modal>
       )}
 
-      {/* Proposal Modal */}
+      {/* Modal for Creating Multi-Person Laptop Allocation Proposal */}
       {proposalModalOpen && (
         <Modal
-          title={`📄 Create Laptop Proposal — ${proposalData.laptop_category}`}
+          title={`📄 Create Laptop Allocation Proposal — ${proposalItems.length} Employee(s)`}
           onClose={() => setProposalModalOpen(false)}
+          wide
         >
           <form onSubmit={handleGenerateProposalPrint} className="stack" style={{ gap: 14 }}>
-            <div style={{ position: "relative" }}>
-              <label className="field-label" style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
-                👤 Employee Name *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Search employee from master..."
-                value={proposalData.employee_name}
-                onFocus={() => setEmpDropdownOpen(true)}
-                onChange={(e) => {
-                  setProposalData({ ...proposalData, employee_name: e.target.value });
-                  setEmpSearchQuery(e.target.value);
-                  setEmpDropdownOpen(true);
-                }}
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
-              />
-              {empDropdownOpen && (
-                <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 999, maxHeight: 200, overflowY: "auto", background: "#18181b", border: "1px solid var(--gold)", borderRadius: 8, padding: 4, marginTop: 4 }}>
-                  {filteredMasterEmployees.map((emp) => (
-                    <div
-                      key={emp.id}
-                      onClick={() => {
-                        setProposalData((prev) => ({
-                          ...prev,
-                          employee_name: emp.full_name,
-                          employee_code: emp.email || prev.employee_code,
-                          department: emp.department || prev.department,
-                        }));
-                        setEmpDropdownOpen(false);
-                      }}
-                      style={{ padding: "6px 10px", cursor: "pointer", borderRadius: 4 }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: 12, color: "var(--fg)" }}>{emp.full_name}</div>
-                      <div style={{ fontSize: 11, color: "var(--muted)" }}>🏢 {emp.department}</div>
-                    </div>
-                  ))}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12 }}>
+              <Field label="Proposal Title / Subject *">
+                <input
+                  type="text"
+                  required
+                  value={proposalTitle}
+                  onChange={(e) => setProposalTitle(e.target.value)}
+                  placeholder="e.g. Laptop Allocation & Purchase Proposal"
+                />
+              </Field>
+
+              <Field label="Proposal Date">
+                <input
+                  type="date"
+                  value={proposalDate}
+                  onChange={(e) => setProposalDate(e.target.value)}
+                />
+              </Field>
+            </div>
+
+            {/* Table of Proposed Employees */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <label className="field-label" style={{ fontWeight: 700, fontSize: 13 }}>
+                  👥 Proposed Employees Table ({proposalItems.length})
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" className="btn ghost sm" onClick={populateFilteredToProposal} style={{ fontSize: 11, borderColor: "var(--gold)", color: "var(--gold)" }}>
+                    👥 Load Filtered ({filtered.length})
+                  </button>
+                  <button type="button" className="btn sm" onClick={addProposalItem} style={{ fontSize: 11, background: "#2563eb", color: "#fff" }}>
+                    ➕ Add Employee
+                  </button>
                 </div>
-              )}
+              </div>
+
+              <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 6, maxHeight: 320, overflowY: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                      <th style={{ padding: "8px", width: 30 }}>#</th>
+                      <th style={{ padding: "8px", minWidth: 160 }}>Employee Name *</th>
+                      <th style={{ padding: "8px", minWidth: 110 }}>Emp ID / Email</th>
+                      <th style={{ padding: "8px", minWidth: 110 }}>Department</th>
+                      <th style={{ padding: "8px", minWidth: 150 }}>Category Tier</th>
+                      <th style={{ padding: "8px", minWidth: 90 }}>Budget (₹)</th>
+                      <th style={{ padding: "8px", minWidth: 140 }}>Proposed Workstation Specs</th>
+                      <th style={{ padding: "8px", width: 40, textAlign: "center" }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {proposalItems.map((item, idx) => (
+                      <tr key={item.tempId || idx} style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                        <td style={{ padding: "6px 8px", fontWeight: 700, color: "var(--muted)" }}>{idx + 1}</td>
+                        <td style={{ padding: "6px 8px", position: "relative" }}>
+                          <input
+                            type="text"
+                            required
+                            placeholder="🔍 Search employee master..."
+                            value={item.employee_name}
+                            onFocus={() => setProposalFocusIndex(idx)}
+                            onChange={(e) => {
+                              updateProposalItem(idx, "employee_name", e.target.value);
+                              setEmpSearchQuery(e.target.value);
+                              setProposalFocusIndex(idx);
+                            }}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--gold)", background: "var(--bg-input)", color: "var(--fg)" }}
+                          />
+                          {proposalFocusIndex === idx && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "100%",
+                                left: 0,
+                                zIndex: 9999,
+                                width: 240,
+                                maxHeight: 180,
+                                overflowY: "auto",
+                                background: "#18181b",
+                                border: "1px solid var(--gold)",
+                                borderRadius: 6,
+                                boxShadow: "0 10px 25px rgba(0,0,0,0.9)",
+                                padding: 4,
+                                marginTop: 2,
+                              }}
+                            >
+                              <div style={{ padding: "4px 6px", fontSize: 10, color: "var(--gold)", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between" }}>
+                                <span>👥 Select Employee</span>
+                                <span style={{ cursor: "pointer", fontWeight: "bold" }} onClick={() => setProposalFocusIndex(null)}>✕</span>
+                              </div>
+                              {filteredMasterEmployees.map((emp) => (
+                                <div
+                                  key={emp.id}
+                                  onClick={() => {
+                                    updateProposalItem(idx, "employee_name", emp.full_name);
+                                    updateProposalItem(idx, "employee_code", emp.email || item.employee_code);
+                                    updateProposalItem(idx, "department", emp.department || item.department);
+                                    setProposalFocusIndex(null);
+                                  }}
+                                  style={{ padding: "4px 8px", cursor: "pointer", borderRadius: 4, borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+                                >
+                                  <div style={{ fontWeight: 600, fontSize: 11, color: "var(--fg)" }}>{emp.full_name}</div>
+                                  <div style={{ fontSize: 10, color: "var(--muted)" }}>🏢 {emp.department}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <input
+                            type="text"
+                            placeholder="Emp ID"
+                            value={item.employee_code}
+                            onChange={(e) => updateProposalItem(idx, "employee_code", e.target.value)}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                          />
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <select
+                            value={item.department}
+                            onChange={(e) => updateProposalItem(idx, "department", e.target.value)}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                          >
+                            {allDepartmentsList.map((d) => (
+                              <option key={d} value={d}>{d}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <select
+                            value={item.laptop_category}
+                            onChange={(e) => updateProposalItem(idx, "laptop_category", e.target.value)}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                          >
+                            {LAPTOP_TIERS.map((t) => (
+                              <option key={t.id} value={t.id}>{t.id}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <input
+                            type="number"
+                            value={item.budget_amount}
+                            onChange={(e) => updateProposalItem(idx, "budget_amount", Number(e.target.value))}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)", fontWeight: 700 }}
+                          />
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <input
+                            type="text"
+                            placeholder="Proposed specs..."
+                            value={item.proposed_device}
+                            onChange={(e) => updateProposalItem(idx, "proposed_device", e.target.value)}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                          />
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                          <button
+                            type="button"
+                            className="btn ghost sm"
+                            onClick={() => removeProposalItem(idx)}
+                            style={{ color: "var(--red)", padding: "2px 4px" }}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: "rgba(255,204,0,0.1)", borderTop: "2px solid var(--gold)", fontWeight: 700 }}>
+                      <td colSpan={5} style={{ padding: "8px", textAlign: "right" }}>
+                        Total Proposed Budget ({proposalItems.length} Employee{proposalItems.length !== 1 ? "s" : ""}):
+                      </td>
+                      <td style={{ padding: "8px", color: "var(--gold)", fontSize: 13 }} className="mono">
+                        ₹{proposalItems.reduce((acc, curr) => acc + Number(curr.budget_amount || 0), 0).toLocaleString()}
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Department">
-                <select value={proposalData.department} onChange={(e) => setProposalData({ ...proposalData, department: e.target.value })}>
-                  {allDepartmentsList.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Laptop Category Tier *">
-                <select
-                  value={proposalData.laptop_category}
-                  onChange={(e) => {
-                    const obj = LAPTOP_TIERS.find((t) => t.id === e.target.value);
-                    setProposalData({
-                      ...proposalData,
-                      laptop_category: e.target.value,
-                      budget_amount: obj ? obj.budget : proposalData.budget_amount,
-                    });
-                  }}
-                >
-                  {LAPTOP_TIERS.map((t) => (
-                    <option key={t.id} value={t.id}>{t.label || t.id}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <Field label="Proposed Workstation Model & Specs">
-              <input
-                type="text"
-                placeholder="e.g. Dell Precision i7 32GB 1TB SSD"
-                value={proposalData.proposed_device}
-                onChange={(e) => setProposalData({ ...proposalData, proposed_device: e.target.value })}
+            <Field label="Business Justification & Department Purpose">
+              <textarea
+                rows={3}
+                placeholder="Required for company laptop entitlement policy, engineering workstation computing and mobility..."
+                value={proposalJustification}
+                onChange={(e) => setProposalJustification(e.target.value)}
               />
-            </Field>
-
-            <Field label="Business Justification / Remarks">
-              <textarea rows={3} value={proposalData.justification} onChange={(e) => setProposalData({ ...proposalData, justification: e.target.value })} />
             </Field>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
-              <button type="button" className="btn ghost" onClick={() => setProposalModalOpen(false)}>Cancel</button>
-              <button type="submit" className="btn primary">📄 Generate & Print Laptop Proposal</button>
+              <button type="button" className="btn ghost" onClick={() => setProposalModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn primary">
+                📄 Generate & Print Multi-Employee Laptop Proposal
+              </button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Printable Laptop Proposal Form */}
-      {proposalPrintRow && (
-        <Modal title={`📄 Laptop Proposal Form — ${proposalPrintRow.employee_name}`} onClose={() => setProposalPrintRow(null)}>
+      {/* Printable Official HydraSpecma Multi-Person Laptop Proposal Form */}
+      {proposalPrintData && (
+        <Modal
+          title={`📄 ${proposalPrintData.title} (${proposalPrintData.items.length} Employees)`}
+          onClose={() => setProposalPrintData(null)}
+        >
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 10 }}>
-            <button className="btn sm primary" onClick={() => window.print()}>🖨️ Print Proposal Document</button>
-            <button className="btn ghost sm" onClick={() => setProposalPrintRow(null)}>Close</button>
+            <button className="btn sm primary" onClick={() => window.print()}>
+              🖨️ Print Proposal Document
+            </button>
+            <button className="btn ghost sm" onClick={() => setProposalPrintData(null)}>
+              Close
+            </button>
           </div>
 
           <div
@@ -1336,78 +1547,120 @@ export default function LaptopsPage() {
             }}
           >
             <div>
+              {/* Header Section */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-                <div><img src="/hydraspecma-logo.png" alt="HydraSpecma Logo" style={{ height: 76, width: "auto", objectFit: "contain" }} /></div>
+                <div>
+                  <img
+                    src="/hydraspecma-logo.png"
+                    alt="HydraSpecma Logo"
+                    style={{ height: 76, width: "auto", objectFit: "contain" }}
+                  />
+                </div>
+
                 <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>HYDRASPECMA INDIA PRIVATE LIMITED</div>
-                  <div>Plot No.130A, Greenbase Industrial and Logistics Park, Kancheepuram, Tamil Nadu - 603 204.</div>
-                  <div>E-mail : hsil.india@hydraspecma.com | www.hydraspecma.com</div>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>
+                    HYDRASPECMA INDIA PRIVATE LIMITED
+                  </div>
+                  <div>Plot No.130A, Greenbase Industrial and Logistics Park,</div>
+                  <div>Hiranandani Parks, Vadakkupattu Village,</div>
+                  <div>Kundrathur Taluk, Kancheepuram, Tamil Nadu - 603 204.</div>
+                  <div>E-mail : hsil.india@hydraspecma.com</div>
+                  <div>www.hydraspecma.com</div>
                   <div>GSTIN: 33AABCH9436R1Z0</div>
                 </div>
               </div>
 
               <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "16px 0 20px" }} />
 
-              <div style={{ textAlign: "center", marginBottom: 24 }}>
-                <h2 style={{ fontSize: 20, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 5, margin: 0, color: "#000000", textTransform: "uppercase" }}>
-                  Laptop Allocation Proposal
+              {/* Document Title */}
+              <div style={{ textAlign: "center", marginBottom: 20 }}>
+                <h2 style={{ fontSize: 19, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 5, margin: 0, color: "#000000", textTransform: "uppercase" }}>
+                  {proposalPrintData.title}
                 </h2>
                 <div style={{ fontSize: 11, color: "#555555", marginTop: 4, fontWeight: 600 }}>
-                  Ref: HS/IT/LAP-PROP/{new Date().getFullYear()} &nbsp;|&nbsp; Date: {formatDateDDMMMYYYY(proposalPrintRow.proposal_date)}
+                  Ref: HS/IT/LAP-PROP/{new Date().getFullYear()} &nbsp;|&nbsp; Date: {formatDateDDMMMYYYY(proposalPrintData.proposal_date)} &nbsp;|&nbsp; Location: Oragadam
                 </div>
               </div>
 
-              <div style={{ marginBottom: 24, fontSize: 13, lineHeight: 2 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Name of Employee</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.employee_name}</span>
+              {/* Multi-Employee Allocation Proposal Table */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: "#000000", marginBottom: 6 }}>
+                  📋 Proposed Employees & Laptop Workstation Allocations List:
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Emp. ID / Email</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.employee_code || "—"}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Department</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.department}</span>
-                </div>
+
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ background: "#f3f4f6", borderBottom: "2px solid #374151", textAlign: "left" }}>
+                      <th style={{ padding: "6px 8px", width: 24 }}>#</th>
+                      <th style={{ padding: "6px 8px" }}>Employee Name & ID</th>
+                      <th style={{ padding: "6px 8px" }}>Dept</th>
+                      <th style={{ padding: "6px 8px" }}>Category Tier</th>
+                      <th style={{ padding: "6px 8px" }}>Proposed Specs</th>
+                      <th style={{ padding: "6px 8px", textAlign: "right" }}>Budget (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {proposalPrintData.items.map((item, idx) => (
+                      <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                        <td style={{ padding: "6px 8px", fontWeight: 700 }}>{idx + 1}</td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <div style={{ fontWeight: 700 }}>{item.employee_name}</div>
+                          {item.employee_code && <div style={{ fontSize: 10, color: "#4b5563" }}>{item.employee_code}</div>}
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>{item.department}</td>
+                        <td style={{ padding: "6px 8px", fontWeight: 600, color: "#2563eb" }}>{item.laptop_category}</td>
+                        <td style={{ padding: "6px 8px" }}>{item.proposed_device || "—"}</td>
+                        <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>
+                          ₹{Number(item.budget_amount).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: "#f9fafb", borderTop: "2px solid #1f2937", fontWeight: 800 }}>
+                      <td colSpan={5} style={{ padding: "8px", textAlign: "right" }}>
+                        TOTAL PROPOSED BUDGET ({proposalPrintData.items.length} EMPLOYEES):
+                      </td>
+                      <td style={{ padding: "8px", textAlign: "right", color: "#059669", fontSize: 12 }}>
+                        ₹{proposalPrintData.totalBudget.toLocaleString()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
 
-              <div style={{ marginBottom: 24, padding: 14, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 13, lineHeight: 2 }}>
-                <div style={{ fontWeight: 800, color: "#000000", borderBottom: "1px solid #d1d5db", paddingBottom: 4, marginBottom: 8 }}>
-                  💻 Proposed Laptop Workstation Tier
+              {/* Business Justification */}
+              <div style={{ marginBottom: 28, fontSize: 12, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 4 }}>
+                  Business Justification & Department Entitlement:
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Laptop Category Tier</span><span>:</span><span style={{ fontWeight: 800, color: "#2563eb" }}>{proposalPrintRow.laptop_category}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Policy Budget Limit</span><span>:</span><span style={{ fontWeight: 800, color: "#059669" }}>₹{Number(proposalPrintRow.budget_amount).toLocaleString()}</span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Proposed Specs</span><span>:</span><span style={{ fontWeight: 700 }}>{proposalPrintRow.proposed_device || "—"}</span>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 35, fontSize: 12, lineHeight: 1.6 }}>
-                <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 6 }}>Business Justification & Eligibility Note:</div>
-                <p style={{ margin: 0, padding: "10px 14px", borderLeft: "3px solid #2563eb", background: "#f8fafc" }}>
-                  {proposalPrintRow.justification || "Proposed as per company laptop policy and department workstation requirements."}
+                <p style={{ margin: 0, padding: "8px 12px", borderLeft: "3px solid #2563eb", background: "#f8fafc" }}>
+                  {proposalPrintData.justification || "Proposed as per company laptop eligibility policy and department workstation requirements."}
                 </p>
               </div>
             </div>
 
+            {/* Bottom Container: 3-Tier Signatures & Footer Pinned to Bottom */}
             <div style={{ marginTop: "auto" }}>
+              {/* 3-Tier Authorization Signature Section */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 28, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
                 <div>
                   <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
                   <span>Proposed By (IT / HR)</span>
                 </div>
+
                 <div>
                   <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
                   <span>Department Head Approval</span>
                 </div>
+
                 <div>
                   <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
                   <span>Finance / Management Authorization</span>
                 </div>
               </div>
 
+              {/* Footer Branding */}
               <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5 }}>
                 <div>A Company in the HydraSpecma Group</div>
                 <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
