@@ -185,6 +185,26 @@ export default function PhonesPage() {
   const [proposalDate, setProposalDate] = useState(todayISO());
   const [proposalItems, setProposalItems] = useState([]);
   const [proposalPrintData, setProposalPrintData] = useState(null);
+  const [proposalHistoryOpen, setProposalHistoryOpen] = useState(false);
+  const [savedProposals, setSavedProposals] = useState([]);
+  const [savingProposal, setSavingProposal] = useState(false);
+
+  const loadSavedProposals = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("it_proposals")
+        .select("*")
+        .eq("module_type", "phone")
+        .order("created_at", { ascending: false });
+      setSavedProposals(data || []);
+    } catch (err) {
+      console.error("Failed to load saved proposals:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSavedProposals();
+  }, [loadSavedProposals]);
   const [proposalFocusIndex, setProposalFocusIndex] = useState(null);
 
   function handleOpenProposal(catName = "all") {
@@ -300,15 +320,15 @@ export default function PhonesPage() {
     );
   }
 
-  function handleGenerateProposalPrint(e) {
+  function handleQuickDraftPrint(e) {
     if (e) e.preventDefault();
     const validItems = proposalItems.filter((i) => (i.employee_name || "").trim());
     if (validItems.length === 0) {
-      alert("Please add at least one employee to the Mobile Proposal.");
+      alert("Please add at least one employee to the Proposal.");
       return;
     }
-
     const totalBudget = validItems.reduce((acc, curr) => acc + Number(curr.budget_amount || 0), 0);
+    const year = new Date().getFullYear();
 
     setProposalPrintData({
       title: proposalTitle,
@@ -316,8 +336,103 @@ export default function PhonesPage() {
       proposal_date: proposalDate,
       items: validItems,
       totalBudget,
+      isOfficial: false,
+      versionLabel: "Draft Preview",
+      proposalNo: `HS/IT/MOB-PROP/${year}/DRAFT`,
     });
     setProposalModalOpen(false);
+  }
+
+  async function handleSaveOfficialProposal(e) {
+    if (e) e.preventDefault();
+    const validItems = proposalItems.filter((i) => (i.employee_name || "").trim());
+    if (validItems.length === 0) {
+      alert("Please add at least one employee to the Official Proposal.");
+      return;
+    }
+
+    setSavingProposal(true);
+    try {
+      const { data: existing } = await supabase
+        .from("it_proposals")
+        .select("version, proposal_no")
+        .eq("module_type", "phone")
+        .order("version", { ascending: false });
+
+      let nextVersion = 1;
+      let propSeq = (existing ? existing.length : 0) + 1;
+
+      if (existing && existing.length > 0) {
+        nextVersion = (existing[0].version || existing.length) + 1;
+      }
+
+      const year = new Date().getFullYear();
+      const propNo = `HS/IT/MOB-PROP/${year}/${String(propSeq).padStart(3, "0")}`;
+      const vLabel = `v${nextVersion}.0`;
+      const totalBudget = validItems.reduce((acc, curr) => acc + Number(curr.budget_amount || 0), 0);
+
+      const payload = {
+        proposal_no: propNo,
+        module_type: "phone",
+        title: proposalTitle,
+        version: nextVersion,
+        version_label: vLabel,
+        proposal_date: proposalDate,
+        items: validItems,
+        total_budget: totalBudget,
+        justification: proposalJustification,
+        status: "Submitted",
+        created_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase.from("it_proposals").insert(payload).select().single();
+      if (error) throw error;
+
+      await loadSavedProposals();
+
+      setProposalPrintData({
+        title: proposalTitle,
+        justification: proposalJustification,
+        proposal_date: proposalDate,
+        items: validItems,
+        totalBudget,
+        isOfficial: true,
+        versionLabel: vLabel,
+        proposalNo: propNo,
+      });
+      setProposalModalOpen(false);
+      alert(`Official Proposal ${vLabel} (${propNo}) saved and stored in database successfully!`);
+    } catch (err) {
+      console.error("Save official proposal error:", err);
+      alert("Failed to save official proposal: " + (err.message || String(err)));
+    } finally {
+      setSavingProposal(false);
+    }
+  }
+
+  function handleRePrintSavedProposal(propRecord) {
+    setProposalPrintData({
+      title: propRecord.title,
+      justification: propRecord.justification,
+      proposal_date: propRecord.proposal_date,
+      items: propRecord.items || [],
+      totalBudget: Number(propRecord.total_budget || 0),
+      isOfficial: true,
+      versionLabel: propRecord.version_label || `v${propRecord.version}.0`,
+      proposalNo: propRecord.proposal_no,
+    });
+    setProposalHistoryOpen(false);
+  }
+
+  async function handleDeleteSavedProposal(id) {
+    if (!confirm("Are you sure you want to delete this saved proposal version record?")) return;
+    try {
+      const { error } = await supabase.from("it_proposals").delete().eq("id", id);
+      if (error) throw error;
+      await loadSavedProposals();
+    } catch (err) {
+      alert("Failed to delete proposal version: " + err.message);
+    }
   }
 
   useEffect(() => {
@@ -843,6 +958,13 @@ export default function PhonesPage() {
               style={{ borderColor: "var(--gold)", color: "var(--gold)", fontWeight: 600 }}
             >
               📄 Mobile Proposal Form
+            </button>
+            <button
+              className="btn ghost sm"
+              onClick={() => setProposalHistoryOpen(true)}
+              style={{ borderColor: "var(--border)", color: "var(--fg)" }}
+            >
+              📜 Proposal History ({savedProposals.length})
             </button>
             <button className="btn ghost sm" onClick={handleExportCsv}>
               Export CSV
@@ -1889,7 +2011,7 @@ export default function PhonesPage() {
           onClose={() => setProposalModalOpen(false)}
           wide
         >
-          <form onSubmit={handleGenerateProposalPrint} className="stack" style={{ gap: 14 }}>
+          <form onSubmit={handleSaveOfficialProposal} className="stack" style={{ gap: 14 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 200px", gap: 12 }}>
               <Field label="Proposal Title / Subject *">
                 <input
@@ -2102,13 +2224,18 @@ export default function PhonesPage() {
               />
             </Field>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
               <button type="button" className="btn ghost" onClick={() => setProposalModalOpen(false)}>
                 Cancel
               </button>
-              <button type="submit" className="btn primary">
-                📄 Generate & Print Multi-Employee Proposal
-              </button>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button type="button" className="btn ghost" onClick={handleQuickDraftPrint} style={{ borderColor: "var(--gold)", color: "var(--gold)", fontWeight: 600 }}>
+                  📄 Option 1: Quick Draft Print (Devices & Prices)
+                </button>
+                <button type="submit" className="btn primary" disabled={savingProposal}>
+                  {savingProposal ? "Saving to Database..." : "💾 Option 2: Save & Issue Official Proposal (With Versioning)"}
+                </button>
+              </div>
             </div>
           </form>
         </Modal>
@@ -2267,6 +2394,89 @@ export default function PhonesPage() {
                 <div>A Company in the HydraSpecma Group</div>
                 <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
               </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal for Saved Proposal History & Database Versions */}
+      {proposalHistoryOpen && (
+        <Modal
+          title="📜 Saved Official Proposal Versions & History Archive"
+          onClose={() => setProposalHistoryOpen(false)}
+          wide
+        >
+          <div className="stack" style={{ gap: 14 }}>
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>
+              History of all stored official proposals and version records saved in the database. You can re-print any version at any time.
+            </div>
+
+            {savedProposals.length === 0 ? (
+              <Card style={{ padding: 30, textAlign: "center", color: "var(--muted)" }}>
+                No saved proposal version records found in database. Create a proposal and click <strong>Option 2: Save & Issue Official Proposal</strong> to store versions here.
+              </Card>
+            ) : (
+              <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 6 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                      <th style={{ padding: "8px 10px" }}>Version</th>
+                      <th style={{ padding: "8px 10px" }}>Proposal Ref No</th>
+                      <th style={{ padding: "8px 10px" }}>Title / Subject</th>
+                      <th style={{ padding: "8px 10px" }}>Date</th>
+                      <th style={{ padding: "8px 10px" }}>Employees</th>
+                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Total Budget (₹)</th>
+                      <th style={{ padding: "8px 10px", textAlign: "center" }}>Status</th>
+                      <th style={{ padding: "8px 10px", textAlign: "right" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedProposals.map((p) => (
+                      <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 10px", fontWeight: 700, color: "var(--gold)" }}>
+                          <span className="pill violet">{p.version_label || `v${p.version}.0`}</span>
+                        </td>
+                        <td style={{ padding: "8px 10px", fontWeight: 700 }} className="mono">
+                          {p.proposal_no}
+                        </td>
+                        <td style={{ padding: "8px 10px", fontWeight: 600 }}>{p.title}</td>
+                        <td style={{ padding: "8px 10px" }}>{dateStr(p.proposal_date)}</td>
+                        <td style={{ padding: "8px 10px", fontWeight: 600 }}>
+                          {Array.isArray(p.items) ? p.items.length : 0} Employee(s)
+                        </td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 700, color: "var(--gold)" }} className="mono">
+                          ₹{Number(p.total_budget || 0).toLocaleString()}
+                        </td>
+                        <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                          <span className="pill green">{p.status || "Submitted"}</span>
+                        </td>
+                        <td style={{ padding: "8px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          <button
+                            className="btn ghost sm"
+                            onClick={() => handleRePrintSavedProposal(p)}
+                            style={{ marginRight: 6, borderColor: "var(--gold)", color: "var(--gold)" }}
+                          >
+                            🖨️ Re-Print Version
+                          </button>
+                          <button
+                            className="btn ghost sm"
+                            onClick={() => handleDeleteSavedProposal(p.id)}
+                            style={{ color: "var(--red)" }}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" className="btn ghost" onClick={() => setProposalHistoryOpen(false)}>
+                Close History
+              </button>
             </div>
           </div>
         </Modal>
