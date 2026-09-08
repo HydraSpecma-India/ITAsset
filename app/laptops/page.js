@@ -249,6 +249,17 @@ export default function LaptopsPage() {
       prev.map((item, idx) => {
         if (idx !== index) return item;
         const updated = { ...item, [field]: val };
+        if (field === "laptop_category" || field === "employee_name") {
+          if (field === "employee_name") {
+            const match = masterEmployees.find(
+              (e) => (e.full_name || "").toLowerCase().trim() === (val || "").toLowerCase().trim()
+            );
+            if (match) {
+              updated.employee_code = match.email || updated.employee_code;
+              updated.department = match.department || updated.department;
+            }
+          }
+        }
         if (field === "laptop_category") {
           const catObj = LAPTOP_TIERS.find((t) => t.id === val);
           if (catObj) {
@@ -1061,6 +1072,7 @@ export default function LaptopsPage() {
 
             {/* Category List */}
             <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+              
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
@@ -1502,6 +1514,13 @@ export default function LaptopsPage() {
                 <label className="field-label" style={{ fontWeight: 700, fontSize: 13 }}>
                   👥 Proposed Employees Table ({proposalItems.length})
                 </label>
+                <datalist id="proposal-emp-datalist">
+                  {masterEmployees.map((emp) => (
+                    <option key={emp.id} value={emp.full_name}>
+                      {emp.department ? `${emp.department} • ${emp.email || ''}` : emp.email}
+                    </option>
+                  ))}
+                </datalist>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button type="button" className="btn ghost sm" onClick={populateFilteredToProposal} style={{ fontSize: 11, borderColor: "var(--gold)", color: "var(--gold)" }}>
                     👥 Load Filtered ({filtered.length})
@@ -1512,7 +1531,7 @@ export default function LaptopsPage() {
                 </div>
               </div>
 
-              <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 6, maxHeight: 320, overflowY: "auto" }}>
+              <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 6, minHeight: 220, maxHeight: 360, overflowY: "auto", paddingBottom: proposalFocusIndex !== null ? 140 : 0 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
@@ -1534,9 +1553,13 @@ export default function LaptopsPage() {
                           <input
                             type="text"
                             required
+                            list="proposal-emp-datalist"
                             placeholder="🔍 Search employee master..."
                             value={item.employee_name}
-                            onFocus={() => setProposalFocusIndex(idx)}
+                            onFocus={() => {
+                              setProposalFocusIndex(idx);
+                              setEmpSearchQuery(item.employee_name || "");
+                            }}
                             onChange={(e) => {
                               updateProposalItem(idx, "employee_name", e.target.value);
                               setEmpSearchQuery(e.target.value);
@@ -1546,41 +1569,49 @@ export default function LaptopsPage() {
                           />
                           {proposalFocusIndex === idx && (
                             <div
+                              onMouseDown={(e) => e.preventDefault()}
                               style={{
                                 position: "absolute",
                                 top: "100%",
                                 left: 0,
-                                zIndex: 9999,
-                                width: 240,
-                                maxHeight: 180,
+                                zIndex: 99999,
+                                width: 260,
+                                maxHeight: 200,
                                 overflowY: "auto",
                                 background: "#18181b",
                                 border: "1px solid var(--gold)",
                                 borderRadius: 6,
-                                boxShadow: "0 10px 25px rgba(0,0,0,0.9)",
+                                boxShadow: "0 10px 30px rgba(0,0,0,0.95)",
                                 padding: 4,
                                 marginTop: 2,
                               }}
                             >
-                              <div style={{ padding: "4px 6px", fontSize: 10, color: "var(--gold)", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between" }}>
-                                <span>👥 Select Employee</span>
-                                <span style={{ cursor: "pointer", fontWeight: "bold" }} onClick={() => setProposalFocusIndex(null)}>✕</span>
+                              <div style={{ padding: "4px 6px", fontSize: 10, color: "var(--gold)", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span>👥 Select Employee ({filteredMasterEmployees.length})</span>
+                                <span style={{ cursor: "pointer", fontWeight: "bold", padding: "0 4px" }} onClick={() => setProposalFocusIndex(null)}>✕</span>
                               </div>
-                              {filteredMasterEmployees.map((emp) => (
-                                <div
-                                  key={emp.id}
-                                  onClick={() => {
-                                    updateProposalItem(idx, "employee_name", emp.full_name);
-                                    updateProposalItem(idx, "employee_code", emp.email || item.employee_code);
-                                    updateProposalItem(idx, "department", emp.department || item.department);
-                                    setProposalFocusIndex(null);
-                                  }}
-                                  style={{ padding: "4px 8px", cursor: "pointer", borderRadius: 4, borderBottom: "1px solid rgba(255,255,255,0.05)" }}
-                                >
-                                  <div style={{ fontWeight: 600, fontSize: 11, color: "var(--fg)" }}>{emp.full_name}</div>
-                                  <div style={{ fontSize: 10, color: "var(--muted)" }}>🏢 {emp.department}</div>
+                              {filteredMasterEmployees.length === 0 ? (
+                                <div style={{ padding: "8px", fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
+                                  No matching employees found
                                 </div>
-                              ))}
+                              ) : (
+                                filteredMasterEmployees.map((emp) => (
+                                  <div
+                                    key={emp.id}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      updateProposalItem(idx, "employee_name", emp.full_name);
+                                      updateProposalItem(idx, "employee_code", emp.email || item.employee_code);
+                                      updateProposalItem(idx, "department", emp.department || item.department);
+                                      setProposalFocusIndex(null);
+                                    }}
+                                    style={{ padding: "6px 8px", cursor: "pointer", borderRadius: 4, borderBottom: "1px solid rgba(255,255,255,0.05)" }}
+                                  >
+                                    <div style={{ fontWeight: 600, fontSize: 11, color: "var(--fg)" }}>{emp.full_name}</div>
+                                    <div style={{ fontSize: 10, color: "var(--muted)" }}>🏢 {emp.department || "General"} {emp.email ? `• ${emp.email}` : ''}</div>
+                                  </div>
+                                ))
+                              )}
                             </div>
                           )}
                         </td>
