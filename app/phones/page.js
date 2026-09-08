@@ -178,6 +178,49 @@ export default function PhonesPage() {
     );
   }
 
+  // Mobile Category Proposal Form State & Handlers
+  const [proposalModalOpen, setProposalModalOpen] = useState(false);
+  const [proposalData, setProposalData] = useState({
+    employee_name: "",
+    employee_code: "",
+    department: "IT",
+    location: "Oragadam",
+    phone_category: "iPhone (₹55k)",
+    budget_amount: 55000,
+    proposed_device: "iPhone 16 128GB Black",
+    justification: "Required for senior executive communication, business mobility & policy entitlement.",
+    proposal_date: todayISO(),
+  });
+  const [proposalPrintRow, setProposalPrintRow] = useState(null);
+
+  function handleOpenProposal(catName = "iPhone (₹55k)") {
+    const selectedCatObj = PHONE_TIERS.find((t) => t.id === catName) || PHONE_TIERS[0];
+    setProposalData({
+      employee_name: "",
+      employee_code: "",
+      department: dept === "All" ? "IT" : dept,
+      location: "Oragadam",
+      phone_category: selectedCatObj ? selectedCatObj.id : catName,
+      budget_amount: selectedCatObj ? selectedCatObj.budget : 55000,
+      proposed_device: selectedCatObj ? `${selectedCatObj.id} Entitlement Device` : "Mobile Device",
+      justification: "Required for corporate communication, department mobility, and policy entitlement.",
+      proposal_date: todayISO(),
+    });
+    setEmpSearchQuery("");
+    setEmpDropdownOpen(false);
+    setProposalModalOpen(true);
+  }
+
+  function handleGenerateProposalPrint(e) {
+    if (e) e.preventDefault();
+    if (!proposalData.employee_name.trim()) {
+      alert("Please enter or select Employee Name for the Mobile Proposal.");
+      return;
+    }
+    setProposalPrintRow({ ...proposalData });
+    setProposalModalOpen(false);
+  }
+
   useEffect(() => {
     setDeptFilter(dept);
   }, [dept]);
@@ -695,6 +738,13 @@ export default function PhonesPage() {
           </>
         ) : (
           <>
+            <button
+              className="btn ghost sm"
+              onClick={() => handleOpenProposal("iPhone (₹55k)")}
+              style={{ borderColor: "var(--gold)", color: "var(--gold)", fontWeight: 600 }}
+            >
+              📄 Mobile Proposal Form
+            </button>
             <button className="btn ghost sm" onClick={handleExportCsv}>
               Export CSV
             </button>
@@ -857,8 +907,21 @@ export default function PhonesPage() {
                   {isActiveFilter ? `✓ ${count} Filtered` : `${count} Assigned`}
                 </span>
               </div>
-              <div style={{ fontWeight: 700, marginTop: 8, fontSize: 14, color: isActiveFilter ? "var(--gold)" : "var(--fg)" }}>
-                {tier.id}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: isActiveFilter ? "var(--gold)" : "var(--fg)" }}>
+                  {tier.id}
+                </div>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenProposal(tier.id);
+                  }}
+                  style={{ fontSize: 10, padding: "2px 6px", borderColor: "var(--gold)", color: "var(--gold)", whiteSpace: "nowrap" }}
+                >
+                  📄 Proposal
+                </button>
               </div>
               <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{tier.desc}</div>
             </Card>
@@ -1720,6 +1783,333 @@ export default function PhonesPage() {
         </Modal>
       )}
 
+      {/* Modal for Creating Mobile Phone Allocation Proposal */}
+      {proposalModalOpen && (
+        <Modal
+          title={`📄 Create Mobile Phone Proposal — ${proposalData.phone_category}`}
+          onClose={() => setProposalModalOpen(false)}
+        >
+          <form onSubmit={handleGenerateProposalPrint} className="stack" style={{ gap: 14 }}>
+            {/* Searchable Employee Master Selection Dropdown */}
+            <div style={{ position: "relative" }}>
+              <label className="field-label" style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
+                👤 Employee Name *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="🔍 Search employee from master or type name..."
+                value={proposalData.employee_name}
+                onFocus={() => setEmpDropdownOpen(true)}
+                onChange={(e) => {
+                  setProposalData({ ...proposalData, employee_name: e.target.value });
+                  setEmpSearchQuery(e.target.value);
+                  setEmpDropdownOpen(true);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-input)",
+                  color: "var(--fg)",
+                }}
+              />
+              {empDropdownOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 999,
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    background: "#18181b",
+                    border: "1px solid var(--gold)",
+                    borderRadius: 8,
+                    boxShadow: "0 10px 25px rgba(0,0,0,0.8)",
+                    padding: 4,
+                    marginTop: 4,
+                  }}
+                >
+                  <div style={{ padding: "4px 8px", fontSize: 11, color: "var(--gold)", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between" }}>
+                    <span>👥 Active Employees ({filteredMasterEmployees.length})</span>
+                    <span style={{ cursor: "pointer", fontWeight: "bold" }} onClick={() => setEmpDropdownOpen(false)}>✕ Close</span>
+                  </div>
+                  {filteredMasterEmployees.map((emp) => (
+                    <div
+                      key={emp.id}
+                      onClick={() => {
+                        setProposalData((prev) => ({
+                          ...prev,
+                          employee_name: emp.full_name,
+                          employee_code: emp.email || prev.employee_code,
+                          department: emp.department || prev.department,
+                        }));
+                        setEmpDropdownOpen(false);
+                      }}
+                      style={{
+                        padding: "6px 10px",
+                        cursor: "pointer",
+                        borderRadius: 4,
+                        borderBottom: "1px solid rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 12, color: "var(--fg)" }}>{emp.full_name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", gap: 8 }}>
+                        <span>🏢 {emp.department || "No Dept"}</span>
+                        {emp.email && <span style={{ color: "var(--gold)" }}>• {emp.email}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Department">
+                <select
+                  value={proposalData.department}
+                  onChange={(e) => setProposalData({ ...proposalData, department: e.target.value })}
+                >
+                  {allDepartmentsList.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Plant Location">
+                <input
+                  type="text"
+                  value={proposalData.location}
+                  onChange={(e) => setProposalData({ ...proposalData, location: e.target.value })}
+                />
+              </Field>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Mobile Category Tier *">
+                <select
+                  value={proposalData.phone_category}
+                  onChange={(e) => {
+                    const selectedCatObj = PHONE_TIERS.find((t) => t.id === e.target.value);
+                    setProposalData({
+                      ...proposalData,
+                      phone_category: e.target.value,
+                      budget_amount: selectedCatObj ? selectedCatObj.budget : proposalData.budget_amount,
+                      proposed_device: selectedCatObj ? `${e.target.value} Entitlement Device` : proposalData.proposed_device,
+                    });
+                  }}
+                >
+                  {PHONE_TIERS.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label || t.id}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Policy Budget Amount (₹)">
+                <input
+                  type="number"
+                  value={proposalData.budget_amount}
+                  onChange={(e) => setProposalData({ ...proposalData, budget_amount: Number(e.target.value) })}
+                />
+              </Field>
+            </div>
+
+            <Field label="Proposed Model & Specifications">
+              <input
+                type="text"
+                placeholder="e.g. iPhone 16 Plus (128GB Black) or Samsung S24"
+                value={proposalData.proposed_device}
+                onChange={(e) => setProposalData({ ...proposalData, proposed_device: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Business Justification / Remarks">
+              <textarea
+                rows={3}
+                placeholder="e.g. Required for senior executive communication, business mobility & policy entitlement."
+                value={proposalData.justification}
+                onChange={(e) => setProposalData({ ...proposalData, justification: e.target.value })}
+              />
+            </Field>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+              <button type="button" className="btn ghost" onClick={() => setProposalModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn primary">
+                📄 Generate & Print Proposal
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Printable Official HydraSpecma Mobile Proposal Form */}
+      {proposalPrintRow && (
+        <Modal
+          title={`📄 Mobile Proposal Form — ${proposalPrintRow.employee_name}`}
+          onClose={() => setProposalPrintRow(null)}
+        >
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 10 }}>
+            <button className="btn sm primary" onClick={() => window.print()}>
+              🖨️ Print Proposal Document
+            </button>
+            <button className="btn ghost sm" onClick={() => setProposalPrintRow(null)}>
+              Close
+            </button>
+          </div>
+
+          <div
+            id="printable-proposal-form"
+            style={{
+              background: "#ffffff",
+              color: "#000000",
+              padding: "36px 44px 24px 44px",
+              borderRadius: 8,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              maxWidth: 740,
+              minHeight: 820,
+              margin: "0 auto",
+              border: "1px solid #e5e7eb",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              boxSizing: "border-box",
+            }}
+          >
+            <div>
+              {/* Header Section */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                <div>
+                  <img
+                    src="/hydraspecma-logo.png"
+                    alt="HydraSpecma Logo"
+                    style={{ height: 76, width: "auto", objectFit: "contain" }}
+                  />
+                </div>
+
+                <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>
+                    HYDRASPECMA INDIA PRIVATE LIMITED
+                  </div>
+                  <div>Plot No.130A, Greenbase Industrial and Logistics Park,</div>
+                  <div>Hiranandani Parks, Vadakkupattu Village,</div>
+                  <div>Kundrathur Taluk, Kancheepuram, Tamil Nadu - 603 204.</div>
+                  <div>E-mail : hsil.india@hydraspecma.com</div>
+                  <div>www.hydraspecma.com</div>
+                  <div>GSTIN: 33AABCH9436R1Z0</div>
+                </div>
+              </div>
+
+              <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "16px 0 20px" }} />
+
+              {/* Document Title */}
+              <div style={{ textAlign: "center", marginBottom: 24 }}>
+                <h2 style={{ fontSize: 20, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 5, margin: 0, color: "#000000", textTransform: "uppercase" }}>
+                  Mobile Phone Allocation Proposal
+                </h2>
+                <div style={{ fontSize: 11, color: "#555555", marginTop: 4, fontWeight: 600 }}>
+                  Ref: HS/IT/MOB-PROP/{new Date().getFullYear()} &nbsp;|&nbsp; Date: {formatDateDDMMMYYYY(proposalPrintRow.proposal_date)}
+                </div>
+              </div>
+
+              {/* Employee Details List */}
+              <div style={{ marginBottom: 24, fontSize: 13, lineHeight: 2 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Name of Employee</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{proposalPrintRow.employee_name}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Emp. ID / Email</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{proposalPrintRow.employee_code || "—"}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Department</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{proposalPrintRow.department}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Plant / Office Location</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{proposalPrintRow.location || "Oragadam"}</span>
+                </div>
+              </div>
+
+              {/* Proposed Device & Category Specifications */}
+              <div style={{ marginBottom: 24, padding: 14, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 13, lineHeight: 2 }}>
+                <div style={{ fontWeight: 800, color: "#000000", borderBottom: "1px solid #d1d5db", paddingBottom: 4, marginBottom: 8 }}>
+                  📱 Proposed Mobile Phone Tier Details
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Mobile Category Tier</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 800, color: "#2563eb" }}>{proposalPrintRow.phone_category}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Policy Budget Limit</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 800, color: "#059669" }}>₹{Number(proposalPrintRow.budget_amount).toLocaleString()}</span>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "170px 20px 1fr", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700 }}>Proposed Model Specs</span>
+                  <span>:</span>
+                  <span style={{ fontWeight: 700 }}>{proposalPrintRow.proposed_device || "—"}</span>
+                </div>
+              </div>
+
+              {/* Business Justification */}
+              <div style={{ marginBottom: 35, fontSize: 12, lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 6 }}>
+                  Business Justification & Eligibility Note:
+                </div>
+                <p style={{ margin: 0, padding: "10px 14px", borderLeft: "3px solid #2563eb", background: "#f8fafc" }}>
+                  {proposalPrintRow.justification || "Proposed as per company mobile eligibility policy and department operational requirements."}
+                </p>
+              </div>
+            </div>
+
+            {/* Bottom Container: 3-Tier Signatures & Footer Pinned to Bottom */}
+            <div style={{ marginTop: "auto" }}>
+              {/* 3-Tier Authorization Signature Section */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 28, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <span>Proposed By (IT / HR)</span>
+                </div>
+
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <span>Department Head Approval</span>
+                </div>
+
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <span>Finance / Management Authorization</span>
+                </div>
+              </div>
+
+              {/* Footer Branding */}
+              <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5 }}>
+                <div>A Company in the HydraSpecma Group</div>
+                <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Embedded CSS for Print Mode */}
       <style
         dangerouslySetInnerHTML={{
@@ -1728,10 +2118,11 @@ export default function PhonesPage() {
               body * {
                 visibility: hidden !important;
               }
-              #printable-issue-form, #printable-issue-form * {
+              #printable-issue-form, #printable-issue-form *,
+              #printable-proposal-form, #printable-proposal-form * {
                 visibility: visible !important;
               }
-              #printable-issue-form {
+              #printable-issue-form, #printable-proposal-form {
                 position: fixed !important;
                 left: 0 !important;
                 top: 0 !important;

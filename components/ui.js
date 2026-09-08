@@ -2,9 +2,9 @@
 
 import { moneyShort, money } from "@/lib/format";
 
-export function Card({ title, hint, actions, children, style }) {
+export function Card({ title, hint, actions, children, style, onClick, className = "", ...props }) {
   return (
-    <section className="card" style={style}>
+    <section className={`card ${className}`.trim()} style={style} onClick={onClick} {...props}>
       {(title || actions) && (
         <div className="card-head">
           <div>
