@@ -87,8 +87,8 @@ export default function LoginPage() {
   return (
     <div className="auth-wrap">
       <div className="card auth-card">
-        <div className="auth-head">
-          <div className="brand-mark">HS</div>
+        <div className="auth-head" style={{ textAlign: "center", marginBottom: 20 }}>
+          <img src="/hydraspecma-logo.png" alt="HydraSpecma Logo" style={{ height: 48, width: "auto", objectFit: "contain", marginBottom: 12 }} />
           <h1>HydraSpecma India Monitor</h1>
           <p>Purchase, asset & budget control · HydraSpecma India</p>
         </div>

@@ -1530,10 +1530,11 @@ export default function PhonesPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <div>
                 {/* Logo Branding */}
-                <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                  <span style={{ fontSize: 32, fontWeight: 900, color: "#414b56", letterSpacing: "-1px", lineHeight: 1 }}>Hydra</span>
-                  <span style={{ fontSize: 32, fontWeight: 900, color: "#ffcc00", letterSpacing: "-1px", lineHeight: 1 }}>Specma</span>
-                </div>
+                <img
+                  src="/hydraspecma-logo.png"
+                  alt="HydraSpecma Logo"
+                  style={{ height: 48, width: "auto", objectFit: "contain" }}
+                />
               </div>
 
               <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>

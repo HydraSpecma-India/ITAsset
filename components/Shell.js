@@ -220,11 +220,11 @@ export default function Shell({ title, subtitle, actions, children }) {
     <div className="shell">
       {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)} />}
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
-        <div className="brand">
-          <div className="brand-mark">HS</div>
+        <div className="brand" style={{ alignItems: "center", gap: 10 }}>
+          <img src="/hydraspecma-logo.png" alt="HydraSpecma Logo" style={{ height: 34, width: "auto", objectFit: "contain" }} />
           <div>
-            <div className="brand-name">BUDGET MONITOR</div>
-            <div className="brand-sub">HydraSpecma</div>
+            <div className="brand-name" style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.5px" }}>BUDGET MONITOR</div>
+            <div className="brand-sub" style={{ fontSize: 10, color: "var(--muted)" }}>HydraSpecma</div>
           </div>
           <button className="btn ghost sm mobile-menu-toggle" onClick={() => setMobileOpen(false)} style={{ marginLeft: "auto" }}>
             ✕
