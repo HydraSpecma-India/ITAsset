@@ -1518,7 +1518,7 @@ export default function GeneralAssetsPage() {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                 <div>
-                  <img src="/hydraspecma-logo.png" alt="HydraSpecma Logo" style={{ height: 76, width: "auto", objectFit: "contain" }} />
+                  <img src="/hydraspecma-logo.png" alt="HydraSpecma Logo" style={{ height: 60, width: "auto", objectFit: "contain" }} />
                 </div>
                 <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
                   <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>
@@ -1761,7 +1761,7 @@ export default function GeneralAssetsPage() {
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: "6px 8px" }}>
+                        <td style={{ padding: "4px 6px" }}>
                           <input
                             type="text"
                             placeholder="Emp ID"
@@ -1770,7 +1770,7 @@ export default function GeneralAssetsPage() {
                             style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
                           />
                         </td>
-                        <td style={{ padding: "6px 8px" }}>
+                        <td style={{ padding: "4px 6px" }}>
                           <select
                             value={item.department}
                             onChange={(e) => updateProposalItem(idx, "department", e.target.value)}
@@ -1781,7 +1781,7 @@ export default function GeneralAssetsPage() {
                             ))}
                           </select>
                         </td>
-                        <td style={{ padding: "6px 8px" }}>
+                        <td style={{ padding: "4px 6px" }}>
                           <select
                             value={item.asset_category}
                             onChange={(e) => updateProposalItem(idx, "asset_category", e.target.value)}
@@ -1792,7 +1792,7 @@ export default function GeneralAssetsPage() {
                             ))}
                           </select>
                         </td>
-                        <td style={{ padding: "6px 8px" }}>
+                        <td style={{ padding: "4px 6px" }}>
                           <input
                             type="number"
                             value={item.budget_amount}
@@ -1800,7 +1800,7 @@ export default function GeneralAssetsPage() {
                             style={{ width: "100%", padding: "4px 6px", fontSize: 12, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)", fontWeight: 700 }}
                           />
                         </td>
-                        <td style={{ padding: "6px 8px" }}>
+                        <td style={{ padding: "4px 6px" }}>
                           <input
                             type="text"
                             placeholder="Proposed specs..."
@@ -1824,7 +1824,7 @@ export default function GeneralAssetsPage() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: "rgba(255,204,0,0.1)", borderTop: "2px solid var(--gold)", fontWeight: 700 }}>
-                      <td colSpan={5} style={{ padding: "8px", textAlign: "right" }}>
+                      <td colSpan={5} style={{ padding: "5px 6px", textAlign: "right" }}>
                         Total Proposed Budget ({proposalItems.length} Employee{proposalItems.length !== 1 ? "s" : ""}):
                       </td>
                       <td style={{ padding: "8px", color: "var(--gold)", fontSize: 13 }} className="mono">
@@ -1878,17 +1878,13 @@ export default function GeneralAssetsPage() {
             style={{
               background: "#ffffff",
               color: "#000000",
-              padding: "36px 44px 24px 44px",
+              padding: "24px 32px 16px 32px",
               borderRadius: 8,
               fontFamily: "'Segoe UI', Arial, sans-serif",
               boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
               maxWidth: 740,
-              minHeight: 820,
               margin: "0 auto",
               border: "1px solid #e5e7eb",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
               boxSizing: "border-box",
             }}
           >
@@ -1899,7 +1895,7 @@ export default function GeneralAssetsPage() {
                   <img
                     src="/hydraspecma-logo.png"
                     alt="HydraSpecma Logo"
-                    style={{ height: 76, width: "auto", objectFit: "contain" }}
+                    style={{ height: 60, width: "auto", objectFit: "contain" }}
                   />
                 </div>
 
@@ -1916,11 +1912,11 @@ export default function GeneralAssetsPage() {
                 </div>
               </div>
 
-              <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "16px 0 20px" }} />
+              <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "10px 0 14px" }} />
 
               {/* Document Title */}
-              <div style={{ textAlign: "center", marginBottom: 20 }}>
-                <h2 style={{ fontSize: 19, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 5, margin: 0, color: "#000000", textTransform: "uppercase" }}>
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <h2 style={{ fontSize: 17, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 4, margin: 0, color: "#000000", textTransform: "uppercase" }}>
                   {proposalPrintData.title}
                 </h2>
                 <div style={{ fontSize: 11, color: "#555555", marginTop: 4, fontWeight: 600 }}>
@@ -1929,34 +1925,34 @@ export default function GeneralAssetsPage() {
               </div>
 
               {/* Multi-Employee Allocation Proposal Table */}
-              <div style={{ marginBottom: 20 }}>
+              <div style={{ marginBottom: 14 }}>
                 <div style={{ fontWeight: 800, fontSize: 12, color: "#000000", marginBottom: 6 }}>
                   📋 Proposed Employees & General IT Hardware Allocations List:
                 </div>
 
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
                   <thead>
                     <tr style={{ background: "#f3f4f6", borderBottom: "2px solid #374151", textAlign: "left" }}>
-                      <th style={{ padding: "6px 8px", width: 24 }}>#</th>
-                      <th style={{ padding: "6px 8px" }}>Employee Name & ID</th>
-                      <th style={{ padding: "6px 8px" }}>Dept</th>
-                      <th style={{ padding: "6px 8px" }}>Category Tier</th>
-                      <th style={{ padding: "6px 8px" }}>Proposed Specs</th>
-                      <th style={{ padding: "6px 8px", textAlign: "right" }}>Budget (₹)</th>
+                      <th style={{ padding: "4px 6px", width: 20 }}>#</th>
+                      <th style={{ padding: "4px 6px" }}>Employee Name & ID</th>
+                      <th style={{ padding: "4px 6px" }}>Dept</th>
+                      <th style={{ padding: "4px 6px" }}>Category Tier</th>
+                      <th style={{ padding: "4px 6px" }}>Proposed Specs</th>
+                      <th style={{ padding: "4px 6px", textAlign: "right" }}>Budget (₹)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {proposalPrintData.items.map((item, idx) => (
                       <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                        <td style={{ padding: "6px 8px", fontWeight: 700 }}>{idx + 1}</td>
-                        <td style={{ padding: "6px 8px" }}>
+                        <td style={{ padding: "4px 6px", fontWeight: 700 }}>{idx + 1}</td>
+                        <td style={{ padding: "4px 6px" }}>
                           <div style={{ fontWeight: 700 }}>{item.employee_name}</div>
-                          {item.employee_code && <div style={{ fontSize: 10, color: "#4b5563" }}>{item.employee_code}</div>}
+                          {item.employee_code && <div style={{ fontSize: 9, color: "#4b5563", lineHeight: 1.1 }}>{item.employee_code}</div>}
                         </td>
-                        <td style={{ padding: "6px 8px" }}>{item.department}</td>
+                        <td style={{ padding: "4px 6px" }}>{item.department}</td>
                         <td style={{ padding: "6px 8px", fontWeight: 600, color: "#2563eb" }}>{item.asset_category}</td>
-                        <td style={{ padding: "6px 8px" }}>{item.proposed_device || "—"}</td>
-                        <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>
+                        <td style={{ padding: "4px 6px" }}>{item.proposed_device || "—"}</td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>
                           ₹{Number(item.budget_amount).toLocaleString()}
                         </td>
                       </tr>
@@ -1964,10 +1960,10 @@ export default function GeneralAssetsPage() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: "#f9fafb", borderTop: "2px solid #1f2937", fontWeight: 800 }}>
-                      <td colSpan={5} style={{ padding: "8px", textAlign: "right" }}>
+                      <td colSpan={5} style={{ padding: "5px 6px", textAlign: "right" }}>
                         TOTAL PROPOSED BUDGET ({proposalPrintData.items.length} EMPLOYEES):
                       </td>
-                      <td style={{ padding: "8px", textAlign: "right", color: "#059669", fontSize: 12 }}>
+                      <td style={{ padding: "5px 6px", textAlign: "right", color: "#059669", fontSize: 11 }}>
                         ₹{proposalPrintData.totalBudget.toLocaleString()}
                       </td>
                     </tr>
@@ -1976,38 +1972,38 @@ export default function GeneralAssetsPage() {
               </div>
 
               {/* Business Justification */}
-              <div style={{ marginBottom: 28, fontSize: 12, lineHeight: 1.5 }}>
+              <div style={{ marginBottom: 16, fontSize: 11, lineHeight: 1.4 }}>
                 <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 4 }}>
                   Business Justification & Department Entitlement:
                 </div>
-                <p style={{ margin: 0, padding: "8px 12px", borderLeft: "3px solid #2563eb", background: "#f8fafc" }}>
+                <p style={{ margin: 0, padding: "6px 10px", borderLeft: "3px solid #2563eb", background: "#f8fafc", fontSize: "10.5px" }}>
                   {proposalPrintData.justification || "Proposed as per company IT asset eligibility policy and department hardware requirements."}
                 </p>
               </div>
             </div>
 
-            {/* Bottom Container: 3-Tier Signatures & Footer Pinned to Bottom */}
-            <div style={{ marginTop: "auto" }}>
+            {/* Bottom Container: 3-Tier Signatures & Footer */}
+            <div className="print-avoid-break" style={{ marginTop: 20, paddingTop: 10 }}>
               {/* 3-Tier Authorization Signature Section */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 28, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 20, fontSize: 10, fontWeight: 700, textAlign: "center" }}>
                 <div>
-                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 32, marginBottom: 4 }}></div>
                   <span>Proposed By (IT / HR)</span>
                 </div>
 
                 <div>
-                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 32, marginBottom: 4 }}></div>
                   <span>Department Head Approval</span>
                 </div>
 
                 <div>
-                  <div style={{ borderBottom: "1px solid #000000", height: 40, marginBottom: 6 }}></div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 32, marginBottom: 4 }}></div>
                   <span>Finance / Management Authorization</span>
                 </div>
               </div>
 
               {/* Footer Branding */}
-              <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5 }}>
+              <div style={{ textAlign: "center", fontSize: 9, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 8, lineHeight: 1.4 }}>
                 <div>A Company in the HydraSpecma Group</div>
                 <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
               </div>
