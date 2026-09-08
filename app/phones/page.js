@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Shell from "@/components/Shell";
+import Shell, { isPhoneModuleAuthorized } from "@/components/Shell";
 import { Card, Field, Modal, Empty } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
 import { money, dateStr, todayISO, daysUntil, csvDownload } from "@/lib/format";
@@ -54,6 +54,42 @@ export default function PhonesPage() {
   const [editingRow, setEditingRow] = useState(null);
   const [form, setForm] = useState(blankForm(dept === "All" ? "IT" : dept));
   const [saving, setSaving] = useState(false);
+
+  // Employee Master Lookup State
+  const [masterEmployees, setMasterEmployees] = useState([]);
+  const [empSearchQuery, setEmpSearchQuery] = useState("");
+  const [empDropdownOpen, setEmpDropdownOpen] = useState(false);
+
+  const loadMasterEmployees = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("it_employees")
+        .select("id, full_name, email, department, job_title")
+        .eq("is_active", true)
+        .order("full_name");
+      setMasterEmployees(data || []);
+    } catch (err) {
+      console.error("Failed to load employee master:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMasterEmployees();
+  }, [loadMasterEmployees]);
+
+  const filteredMasterEmployees = useMemo(() => {
+    if (!empSearchQuery.trim()) return masterEmployees.slice(0, 30);
+    const sq = empSearchQuery.toLowerCase();
+    return masterEmployees
+      .filter(
+        (e) =>
+          (e.full_name || "").toLowerCase().includes(sq) ||
+          (e.email || "").toLowerCase().includes(sq) ||
+          (e.department || "").toLowerCase().includes(sq) ||
+          (e.job_title || "").toLowerCase().includes(sq)
+      )
+      .slice(0, 30);
+  }, [masterEmployees, empSearchQuery]);
 
   useEffect(() => {
     setDeptFilter(dept);
@@ -146,6 +182,8 @@ export default function PhonesPage() {
     setEditingRow(null);
     const targetDept = dept === "All" ? (profile?.department || "IT") : dept;
     setForm(blankForm(targetDept));
+    setEmpSearchQuery("");
+    setEmpDropdownOpen(false);
     setModalOpen(true);
   }
 
@@ -165,6 +203,8 @@ export default function PhonesPage() {
       status: r.status || "Eligible",
       remarks: r.remarks || "",
     });
+    setEmpSearchQuery(r.employee_name || "");
+    setEmpDropdownOpen(false);
     setModalOpen(true);
   }
 
@@ -270,6 +310,30 @@ export default function PhonesPage() {
     );
   }
 
+  const isAuthorized = isPhoneModuleAuthorized(profile);
+
+  if (profile && !isAuthorized) {
+    return (
+      <Shell title="📱 Mobile Phone Allocation" subtitle="Device Eligibility & Policy Management">
+        <Card style={{ textAlign: "center", padding: "50px 20px", marginTop: 24, maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
+          <div style={{ fontSize: 52, marginBottom: 16 }}>🔒</div>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--fg)", marginBottom: 10 }}>Access Restricted</h2>
+          <p style={{ color: "var(--muted)", lineHeight: 1.6, marginBottom: 24, fontSize: 14 }}>
+            The <strong>Mobile Phone Allocation</strong> module is strictly restricted to <strong>Global Reader</strong>, <strong>Global Admin</strong>, <strong>HR Admin</strong>, <strong>IT Admin</strong>, and <strong>Finance Admin</strong> roles only.
+          </p>
+          <div style={{ fontSize: 13, color: "var(--amber)", padding: "10px 16px", background: "rgba(255,204,0,0.08)", borderRadius: 8, marginBottom: 24, display: "inline-block" }}>
+            Current Role: <strong>{profile?.role || "User"}</strong> ({profile?.department || "General"})
+          </div>
+          <div>
+            <button className="btn primary" onClick={() => window.location.href = "/assets"}>
+              ← Return to Asset Register
+            </button>
+          </div>
+        </Card>
+      </Shell>
+    );
+  }
+
   return (
     <Shell
       title="📱 Mobile Phone Allocation Module"
@@ -288,169 +352,188 @@ export default function PhonesPage() {
       }
     >
       {!canEdit && (
-        <div className="alert info">
-          You have View-Only access for {dept}. Phone allocations and eligibility records can only be updated by a Department Administrator.
+        <div style={{ padding: "10px 16px", background: "rgba(255,204,0,0.1)", border: "1px solid var(--gold)", borderRadius: 8, color: "var(--gold)", marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+          <span>ℹ️</span> View-Only Mode: You have read-only access for Phone Allocation records.
         </div>
       )}
 
-      {/* KPI Cards Header */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 16 }}>
-        <div style={{ padding: 14, background: "rgba(255,255,255,0.03)", border: "1px solid var(--line-soft)", borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Total Monitored</div>
-          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 2 }} className="mono">{kpis.totalCount}</div>
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>Allocated & eligible staff</div>
-        </div>
+      {/* KPI Header Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 20 }}>
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Total Monitored Employees
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "var(--fg)" }}>{kpis.totalCount}</div>
+        </Card>
 
-        <div style={{ padding: 14, background: "rgba(63,191,143,0.08)", border: "1px solid rgba(63,191,143,0.3)", borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase" }}>Active Issued Devices</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--green)", marginTop: 2 }} className="mono">{kpis.activeCount}</div>
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>Phones currently in use</div>
-        </div>
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Active Issued Devices
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "#10b981" }}>{kpis.activeCount}</div>
+        </Card>
 
-        <div style={{ padding: 14, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--blue)", textTransform: "uppercase" }}>Eligible / Pending</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--blue)", marginTop: 2 }} className="mono">{kpis.eligibleCount}</div>
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>Ready for issuance</div>
-        </div>
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Eligible / Pending
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "#8b5cf6" }}>{kpis.eligibleCount}</div>
+        </Card>
 
-        <div style={{ padding: 14, background: "rgba(226,96,79,0.08)", border: "1px solid rgba(226,96,79,0.3)", borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase" }}>Expired / Upgrade Due</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "var(--red)", marginTop: 2 }} className="mono">{kpis.expiredCount}</div>
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>Needs policy replacement</div>
-        </div>
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Expired / Upgrade Due
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "#ef4444" }}>{kpis.expiredCount}</div>
+        </Card>
 
-        <div style={{ padding: 14, background: "rgba(255,204,0,0.08)", border: "1px solid rgba(255,204,0,0.3)", borderRadius: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--gold)", textTransform: "uppercase" }}>Policy Commitment</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--gold)", marginTop: 2 }} className="mono">{money(kpis.totalBudgetCommitment)}</div>
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>Total device budget value</div>
-        </div>
+        <Card style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            Policy Budget Commitment
+          </div>
+          <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, color: "var(--gold)" }}>
+            {money(kpis.totalBudgetCommitment)}
+          </div>
+        </Card>
       </div>
 
-      {/* Visual Model Tiers Summary Banner */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+      {/* Model Tier Quick Filters */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12, marginBottom: 20 }}>
         {PHONE_TIERS.map((tier) => {
+          const isActiveFilter = tierFilter === tier.id;
           const count = rows.filter((r) => r.phone_category === tier.id).length;
           return (
-            <div
+            <Card
               key={tier.id}
-              onClick={() => setTierFilter(tierFilter === tier.id ? "all" : tier.id)}
+              onClick={() => setTierFilter(isActiveFilter ? "all" : tier.id)}
               style={{
-                padding: "12px 14px",
-                background: tierFilter === tier.id ? "rgba(255,204,0,0.12)" : "rgba(255,255,255,0.02)",
-                border: tierFilter === tier.id ? "1px solid var(--gold)" : "1px solid var(--line-soft)",
-                borderRadius: 8,
+                padding: 14,
                 cursor: "pointer",
+                border: isActiveFilter ? "2px solid var(--gold)" : "1px solid var(--border)",
+                background: isActiveFilter ? "rgba(255,204,0,0.06)" : "var(--bg-card)",
                 transition: "all 0.15s ease",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 16 }}>{tier.icon}</span>
-                <span style={{ fontSize: 12, fontWeight: 700 }} className="mono">{money(tier.budget)}</span>
+                <span style={{ fontSize: 20 }}>{tier.icon}</span>
+                <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 12, background: "rgba(255,255,255,0.08)", fontWeight: 600 }}>
+                  {count} Assigned
+                </span>
               </div>
-              <div style={{ fontWeight: 700, fontSize: 13, marginTop: 4, color: "var(--text)" }}>{tier.id}</div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-                <span>{tier.desc}</span>
-                <span style={{ fontWeight: 700, color: "var(--gold)" }}>{count} Allocations</span>
-              </div>
-            </div>
+              <div style={{ fontWeight: 700, marginTop: 8, fontSize: 14, color: "var(--fg)" }}>{tier.id}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{tier.desc}</div>
+            </Card>
           );
         })}
       </div>
 
-      {/* Filter & Search Bar */}
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            type="text"
-            placeholder="🔍 Search employee name, code, IMEI, model..."
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ flex: 1, minWidth: 220, padding: "7px 10px", fontSize: 12 }}
-          />
+      {/* Filter and Search Bar */}
+      <Card style={{ padding: 14, marginBottom: 20 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+          <div style={{ flex: "1 1 240px" }}>
+            <input
+              type="text"
+              placeholder="🔍 Search employee name, code, serial/IMEI, specs..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+            />
+          </div>
 
-          <select value={tierFilter} onChange={(e) => setTierFilter(e.target.value)} style={{ padding: "7px 10px", fontSize: 12 }}>
-            <option value="all">All Category Tiers</option>
-            {PHONE_TIERS.map((t) => (
-              <option key={t.id} value={t.id}>{t.label}</option>
-            ))}
-          </select>
-
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: "7px 10px", fontSize: 12 }}>
-            <option value="all">All Statuses</option>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-
-          {(q || tierFilter !== "all" || statusFilter !== "all") && (
-            <button
-              className="btn ghost sm"
-              onClick={() => {
-                setQ("");
-                setTierFilter("all");
-                setStatusFilter("all");
-              }}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <select
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
             >
-              Reset Filters
-            </button>
-          )}
+              <option value="All">All Departments</option>
+              {departments.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+
+            <select
+              value={tierFilter}
+              onChange={(e) => setTierFilter(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+            >
+              <option value="all">All Phone Tiers</option>
+              {PHONE_TIERS.map((t) => (
+                <option key={t.id} value={t.id}>{t.id}</option>
+              ))}
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+            >
+              <option value="all">All Statuses</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </Card>
 
-      {/* Allocation Register Table */}
+      {/* Main Allocations Table */}
       {loading ? (
-        <div className="loading">Loading phone allocation register...</div>
+        <Card style={{ padding: 40, textAlign: "center" }}>
+          <div style={{ color: "var(--muted)" }}>Loading Mobile Phone Allocations...</div>
+        </Card>
       ) : filtered.length === 0 ? (
-        <Empty>No phone allocation records found. Click '+ New Allocation' to add employee device records.</Empty>
+        <Empty message="No phone allocation records found." action={canEdit && <button className="btn sm" onClick={handleOpenAdd}>Add New Record</button>} />
       ) : (
-        <div className="table-wrap">
-          <table>
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr>
-                <th>Employee Name & Code</th>
-                <th>Department</th>
-                <th>Phone Model Tier</th>
-                <th>Policy Budget</th>
-                <th>Eligible Date</th>
-                <th>Received Date</th>
-                <th>Policy Expiry Date</th>
-                <th>Status</th>
-                <th>Device & IMEI / Serial</th>
-                <th>Remarks</th>
-                {canEdit && <th style={{ textAlign: "right" }}>Actions</th>}
+              <tr style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                <th style={{ padding: "10px 14px" }}>Employee</th>
+                <th style={{ padding: "10px 14px" }}>Department</th>
+                <th style={{ padding: "10px 14px" }}>Phone Category Tier</th>
+                <th style={{ padding: "10px 14px" }}>Policy Budget</th>
+                <th style={{ padding: "10px 14px" }}>Eligible Date</th>
+                <th style={{ padding: "10px 14px" }}>Received Date</th>
+                <th style={{ padding: "10px 14px" }}>Policy Expiry Date</th>
+                <th style={{ padding: "10px 14px" }}>Status</th>
+                <th style={{ padding: "10px 14px" }}>Device Details / IMEI</th>
+                <th style={{ padding: "10px 14px" }}>Remarks</th>
+                {canEdit && <th style={{ padding: "10px 14px", textAlign: "right" }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => {
                 const daysExp = r.expiry_date ? daysUntil(r.expiry_date) : null;
-                const isExp = r.status === "Expired" || (daysExp !== null && daysExp < 0);
+                const isExp = r.status === "Expired" || (r.expiry_date && new Date(r.expiry_date) < new Date());
 
-                let statusPillClass = "grey";
+                let statusPillClass = "gray";
                 if (isExp) statusPillClass = "red";
                 else if (r.status === "Active") statusPillClass = "green";
+                else if (r.status === "Expiring Soon") statusPillClass = "amber";
                 else if (r.status === "Eligible") statusPillClass = "blue";
                 else if (r.status === "Applied") statusPillClass = "violet";
-                else if (r.status === "Expiring Soon" || (daysExp !== null && daysExp <= 60)) statusPillClass = "amber";
 
                 return (
-                  <tr key={r.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{r.employee_name}</div>
-                      <div style={{ fontSize: 11, color: "var(--faint)" }}>{r.employee_code || "—"}</div>
+                  <tr key={r.id} style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                    <td style={{ padding: "10px 14px" }}>
+                      <div style={{ fontWeight: 600, color: "var(--fg)" }}>{r.employee_name}</div>
+                      {r.employee_code && <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{r.employee_code}</div>}
                     </td>
-                    <td><span className="pill grey">{r.department}</span></td>
-                    <td>
-                      <div style={{ fontWeight: 600, fontSize: 12 }}>
-                        {r.phone_category.includes("iPhone") ? "🍏 " : r.phone_category.includes("Android High") ? "🤖 " : "📱 "}
-                        {r.phone_category}
-                      </div>
+                    <td style={{ padding: "10px 14px" }}>
+                      <span className="pill gray">{r.department}</span>
                     </td>
-                    <td className="num mono" style={{ fontWeight: 600 }}>{money(r.budget_amount)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{dateStr(r.eligible_date)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>
+                    <td style={{ padding: "10px 14px", fontWeight: 500 }}>{r.phone_category}</td>
+                    <td style={{ padding: "10px 14px", fontWeight: 700, color: "var(--gold)" }} className="mono">
+                      {money(r.budget_amount)}
+                    </td>
+                    <td style={{ padding: "10px 14px" }} className="mono">
+                      {r.eligible_date ? dateStr(r.eligible_date) : "—"}
+                    </td>
+                    <td style={{ padding: "10px 14px" }} className="mono">
                       {r.received_date ? dateStr(r.received_date) : <span style={{ color: "var(--faint)", fontStyle: "italic" }}>Not Received</span>}
                     </td>
-                    <td className="mono" style={{ fontSize: 12 }}>
+                    <td style={{ padding: "10px 14px" }} className="mono">
                       {r.expiry_date ? (
                         <div>
                           <span>{dateStr(r.expiry_date)}</span>
@@ -464,10 +547,10 @@ export default function PhonesPage() {
                         "—"
                       )}
                     </td>
-                    <td>
+                    <td style={{ padding: "10px 14px" }}>
                       <span className={`pill ${statusPillClass}`}>{isExp ? "Expired" : r.status}</span>
                     </td>
-                    <td style={{ fontSize: 12 }}>
+                    <td style={{ padding: "10px 14px" }}>
                       {r.device_details ? (
                         <div>
                           <div style={{ fontWeight: 600 }}>{r.device_details}</div>
@@ -477,9 +560,9 @@ export default function PhonesPage() {
                         <span style={{ color: "var(--faint)", fontStyle: "italic" }}>No Device Assigned</span>
                       )}
                     </td>
-                    <td style={{ fontSize: 12, color: "var(--muted)" }}>{r.remarks || "—"}</td>
+                    <td style={{ padding: "10px 14px", color: "var(--muted)" }}>{r.remarks || "—"}</td>
                     {canEdit && (
-                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <td style={{ padding: "10px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
                         <button className="btn ghost sm" onClick={() => handleOpenEdit(r)} style={{ marginRight: 6 }}>
                           ✏️ Edit
                         </button>
@@ -503,28 +586,104 @@ export default function PhonesPage() {
           onClose={() => setModalOpen(false)}
         >
           <form onSubmit={handleSave} className="stack" style={{ gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Employee Name *">
+            {/* Searchable Employee Master Selection Dropdown */}
+            <div style={{ position: "relative" }}>
+              <label className="field-label" style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
+                👤 Select Employee from Employee Master *
+              </label>
+              <div style={{ position: "relative" }}>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Manigandan P"
+                  placeholder="🔍 Search employee name or email from master…"
                   value={form.employee_name}
-                  onChange={(e) => setForm({ ...form, employee_name: e.target.value })}
+                  onFocus={() => setEmpDropdownOpen(true)}
+                  onChange={(e) => {
+                    setForm({ ...form, employee_name: e.target.value });
+                    setEmpSearchQuery(e.target.value);
+                    setEmpDropdownOpen(true);
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
+                    background: "var(--bg-input)",
+                    color: "var(--fg)",
+                  }}
                 />
-              </Field>
+                {empDropdownOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      zIndex: 999,
+                      maxHeight: 220,
+                      overflowY: "auto",
+                      background: "#18181b",
+                      border: "1px solid var(--gold)",
+                      borderRadius: 8,
+                      boxShadow: "0 10px 25px rgba(0,0,0,0.8)",
+                      padding: 4,
+                      marginTop: 4,
+                    }}
+                  >
+                    <div style={{ padding: "4px 8px", fontSize: 11, color: "var(--gold)", borderBottom: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between" }}>
+                      <span>👥 Master Active Employees ({filteredMasterEmployees.length})</span>
+                      <span style={{ cursor: "pointer", fontWeight: "bold" }} onClick={() => setEmpDropdownOpen(false)}>✕ Close</span>
+                    </div>
+                    {filteredMasterEmployees.length === 0 ? (
+                      <div style={{ padding: 10, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
+                        No employee matching search. You can continue typing custom name above.
+                      </div>
+                    ) : (
+                      filteredMasterEmployees.map((emp) => (
+                        <div
+                          key={emp.id}
+                          onClick={() => {
+                            setForm((prev) => ({
+                              ...prev,
+                              employee_name: emp.full_name,
+                              employee_code: emp.email || prev.employee_code,
+                              department: emp.department || prev.department,
+                            }));
+                            setEmpSearchQuery(emp.full_name);
+                            setEmpDropdownOpen(false);
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            cursor: "pointer",
+                            borderRadius: 6,
+                            borderBottom: "1px solid rgba(255,255,255,0.05)",
+                            background: form.employee_name === emp.full_name ? "rgba(255,204,0,0.15)" : "transparent",
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, fontSize: 13, color: "var(--fg)" }}>{emp.full_name}</div>
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2, display: "flex", gap: 8 }}>
+                            <span>🏢 {emp.department || "No Dept"}</span>
+                            {emp.job_title && <span>• {emp.job_title}</span>}
+                            {emp.email && <span style={{ color: "var(--gold)" }}>• {emp.email}</span>}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
 
-              <Field label="Employee Code / ID">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Employee Code / Email">
                 <input
                   type="text"
-                  placeholder="e.g. EMP-1001"
+                  placeholder="e.g. employee.email@hydraspecma.com"
                   value={form.employee_code}
                   onChange={(e) => setForm({ ...form, employee_code: e.target.value })}
                 />
               </Field>
-            </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Department">
                 <select value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}>
                   {departments.map((d) => (

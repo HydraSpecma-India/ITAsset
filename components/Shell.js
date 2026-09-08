@@ -6,6 +6,21 @@ import Link from "next/link";
 import { useAuth } from "@/lib/session";
 import { useDept } from "@/lib/department";
 
+export function isPhoneModuleAuthorized(profile) {
+  if (!profile) return false;
+  const role = profile.role;
+  if (role === "admin" || role === "global_reader") return true;
+  const userDept = profile.department;
+  const isDeptAdminRole = role === "dept_admin" || role === "admin";
+  const allowedDepts = ["IT", "HR", "Finance"];
+  if (isDeptAdminRole && allowedDepts.includes(userDept)) return true;
+  const perms = profile.dept_permissions || {};
+  for (const dept of allowedDepts) {
+    if (perms[dept] === "admin") return true;
+  }
+  return false;
+}
+
 const NAV = [
   { group: "Overview", items: [
     { href: "/dashboard", label: "Dashboard", ico: "◈", hideForEmployee: true },
@@ -16,7 +31,7 @@ const NAV = [
   { group: "Records", items: [
     { href: "/invoices", label: "Invoices", ico: "▦", hideForEmployee: true },
     { href: "/assets", label: "Asset Register", ico: "▧" },
-    { href: "/phones", label: "Phone Allocation", ico: "📱" },
+    { href: "/phones", label: "Phone Allocation", ico: "📱", phoneAuthOnly: true },
     { href: "/employees", label: "Employees & Depts", ico: "👥", globalAdminOnly: true },
   ]},
   { group: "Setup", items: [
@@ -211,6 +226,7 @@ export default function Shell({ title, subtitle, actions, children }) {
             if (i.globalAdminOnly && !isGlobalAdmin) return false;
             if (i.adminOnly && !isAdmin) return false;
             if (i.hideForEmployee && isEmployee) return false;
+            if (i.phoneAuthOnly && !isPhoneModuleAuthorized(profile)) return false;
             return true;
           });
           if (!items.length) return null;
