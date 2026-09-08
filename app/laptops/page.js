@@ -144,18 +144,33 @@ export default function LaptopsPage() {
   }, [loadMasterEmployees]);
 
   const filteredMasterEmployees = useMemo(() => {
-    if (!empSearchQuery.trim()) return masterEmployees.slice(0, 30);
-    const sq = empSearchQuery.toLowerCase();
-    return masterEmployees
-      .filter(
+    const activeNonExpiringSet = new Set();
+    rows.forEach((r) => {
+      if (!isEligibleForProposal(r) && r.employee_name) {
+        activeNonExpiringSet.add(r.employee_name.toLowerCase().trim());
+      }
+    });
+
+    const sq = (empSearchQuery || "").toLowerCase().trim();
+
+    let list = masterEmployees;
+    if (sq) {
+      list = list.filter(
         (e) =>
           (e.full_name || "").toLowerCase().includes(sq) ||
           (e.email || "").toLowerCase().includes(sq) ||
           (e.department || "").toLowerCase().includes(sq) ||
           (e.job_title || "").toLowerCase().includes(sq)
-      )
+      );
+    }
+
+    return list
+      .map((e) => ({
+        ...e,
+        isAlreadyActive: activeNonExpiringSet.has((e.full_name || "").toLowerCase().trim()),
+      }))
       .slice(0, 30);
-  }, [masterEmployees, empSearchQuery]);
+  }, [masterEmployees, empSearchQuery, rows]);
 
   const allDepartmentsList = useMemo(() => {
     const set = new Set([
@@ -202,6 +217,22 @@ export default function LaptopsPage() {
     loadSavedProposals();
   }, [loadSavedProposals]);
   const [proposalFocusIndex, setProposalFocusIndex] = useState(null);
+
+  function isEligibleForProposal(r) {
+    if (!r) return true;
+    if (!r.status || r.status !== "Active") return true; // Eligible, Applied, Expired, Expiring Soon, etc.
+    if (!r.expiry_date) return true; // No expiry date set
+
+    try {
+      const exp = new Date(r.expiry_date);
+      if (isNaN(exp.getTime())) return true;
+      const nextYearLimit = new Date();
+      nextYearLimit.setDate(nextYearLimit.getDate() + 365); // Next 1 year expiry limit
+      return exp <= nextYearLimit; // True if expiring within next 365 days or already expired
+    } catch (err) {
+      return true;
+    }
+  }
 
   function handleOpenProposal(catName = "all") {
     let initialItems = [];
@@ -1645,7 +1676,7 @@ export default function LaptopsPage() {
                 </datalist>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button type="button" className="btn ghost sm" onClick={populateFilteredToProposal} style={{ fontSize: 11, borderColor: "var(--gold)", color: "var(--gold)" }}>
-                    👥 Load Filtered ({filtered.length})
+                    👥 Load Eligible ({filtered.filter((r) => isEligibleForProposal(r)).length})
                   </button>
                   <button type="button" className="btn sm" onClick={addProposalItem} style={{ fontSize: 11, background: "#2563eb", color: "#fff" }}>
                     ➕ Add Employee
@@ -1730,7 +1761,7 @@ export default function LaptopsPage() {
                                     style={{ padding: "6px 8px", cursor: "pointer", borderRadius: 4, borderBottom: "1px solid rgba(255,255,255,0.05)" }}
                                   >
                                     <div style={{ fontWeight: 600, fontSize: 11, color: "var(--fg)" }}>{emp.full_name}</div>
-                                    <div style={{ fontSize: 10, color: "var(--muted)" }}>🏢 {emp.department || "General"} {emp.email ? `• ${emp.email}` : ''}</div>
+                                    <div style={{ fontSize: 10, color: "var(--muted)" }}>🏢 {emp.department || "General"} {emp.email ? `• ${emp.email}` : ''} {emp.isAlreadyActive ? <span style={{ color: "#ef4444", fontWeight: "bold", marginLeft: 4 }}>• ⚠️ Active Issued</span> : <span style={{ color: "#10b981", marginLeft: 4 }}>• ✅ Eligible</span>}</div>
                                   </div>
                                 ))
                               )}
