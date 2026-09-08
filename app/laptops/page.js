@@ -1905,162 +1905,118 @@ export default function LaptopsPage() {
               boxSizing: "border-box",
             }}
           >
-            {(() => {
-              const itemChunks = [];
-              const chunkSize = 15;
-              const itemsList = proposalPrintData.items || [];
-              for (let i = 0; i < itemsList.length; i += chunkSize) {
-                itemChunks.push(itemsList.slice(i, i + chunkSize));
-              }
-              if (itemChunks.length === 0) itemChunks.push([]);
+            {/* Header Section */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <div>
+                <img
+                  src="/hydraspecma-logo.png"
+                  alt="HydraSpecma Logo"
+                  style={{ height: 60, width: "auto", objectFit: "contain" }}
+                />
+              </div>
 
-              return itemChunks.map((chunk, chunkIdx) => {
-                const isLastPage = chunkIdx === itemChunks.length - 1;
-                const startNo = chunkIdx * chunkSize;
+              <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>
+                  HYDRASPECMA INDIA PRIVATE LIMITED
+                </div>
+                <div>Plot No.130A, Greenbase Industrial and Logistics Park,</div>
+                <div>Hiranandani Parks, Vadakkupattu Village,</div>
+                <div>Kundrathur Taluk, Kancheepuram, Tamil Nadu - 603 204.</div>
+                <div>E-mail : hsil.india@hydraspecma.com</div>
+                <div>www.hydraspecma.com</div>
+                <div>GSTIN: 33AABCH9436R1Z0</div>
+              </div>
+            </div>
 
-                return (
-                  <div
-                    key={chunkIdx}
-                    style={{
-                      pageBreakAfter: isLastPage ? "auto" : "always",
-                      breakAfter: isLastPage ? "auto" : "page",
-                      marginBottom: isLastPage ? 0 : 24,
-                    }}
-                  >
-                    {/* Page 1 Header Section */}
-                    {chunkIdx === 0 && (
-                      <>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                          <div>
-                            <img
-                              src="/hydraspecma-logo.png"
-                              alt="HydraSpecma Logo"
-                              style={{ height: 60, width: "auto", objectFit: "contain" }}
-                            />
-                          </div>
+            <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "10px 0 14px" }} />
 
-                          <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
-                            <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>
-                              HYDRASPECMA INDIA PRIVATE LIMITED
-                            </div>
-                            <div>Plot No.130A, Greenbase Industrial and Logistics Park,</div>
-                            <div>Hiranandani Parks, Vadakkupattu Village,</div>
-                            <div>Kundrathur Taluk, Kancheepuram, Tamil Nadu - 603 204.</div>
-                            <div>E-mail : hsil.india@hydraspecma.com</div>
-                            <div>www.hydraspecma.com</div>
-                            <div>GSTIN: 33AABCH9436R1Z0</div>
-                          </div>
-                        </div>
+            {/* Document Title */}
+            <div style={{ textAlign: "center", marginBottom: 14 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 4, margin: 0, color: "#000000", textTransform: "uppercase" }}>
+                {proposalPrintData.title}
+              </h2>
+              <div style={{ fontSize: 10, color: "#555555", marginTop: 4, fontWeight: 600 }}>
+                Ref: {proposalPrintData.proposalNo || 'HS/IT/PROP/2026'} &nbsp;|&nbsp; Date: {formatDateDDMMMYYYY(proposalPrintData.proposal_date)} &nbsp;|&nbsp; Location: Oragadam &nbsp;|&nbsp; <span style={{ padding: "2px 8px", background: proposalPrintData.isOfficial ? "#dcfce7" : "#fef3c7", color: proposalPrintData.isOfficial ? "#15803d" : "#b45309", borderRadius: 4, fontWeight: 800 }}>{proposalPrintData.isOfficial ? `OFFICIAL RECORD ${proposalPrintData.versionLabel || ''}` : 'DRAFT PREVIEW'}</span>
+              </div>
+            </div>
 
-                        <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "10px 0 14px" }} />
+            {/* Multi-Employee Allocation Proposal Table */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 11, color: "#000000", marginBottom: 6 }}>
+                📋 Proposed Employees & Device Allocations List:
+              </div>
 
-                        {/* Document Title */}
-                        <div style={{ textAlign: "center", marginBottom: 14 }}>
-                          <h2 style={{ fontSize: 17, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 4, margin: 0, color: "#000000", textTransform: "uppercase" }}>
-                            {proposalPrintData.title}
-                          </h2>
-                          <div style={{ fontSize: 10, color: "#555555", marginTop: 4, fontWeight: 600 }}>
-                            Ref: {proposalPrintData.proposalNo || 'HS/IT/PROP/2026'} &nbsp;|&nbsp; Date: {formatDateDDMMMYYYY(proposalPrintData.proposal_date)} &nbsp;|&nbsp; Location: Oragadam &nbsp;|&nbsp; <span style={{ padding: "2px 8px", background: proposalPrintData.isOfficial ? "#dcfce7" : "#fef3c7", color: proposalPrintData.isOfficial ? "#15803d" : "#b45309", borderRadius: 4, fontWeight: 800 }}>{proposalPrintData.isOfficial ? `OFFICIAL RECORD ${proposalPrintData.versionLabel || ''}` : 'DRAFT PREVIEW'}</span>
-                          </div>
-                        </div>
-                      </>
-                    )}
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                <thead>
+                  <tr style={{ background: "#f3f4f6", borderBottom: "2px solid #374151", textAlign: "left" }}>
+                    <th style={{ padding: "4px 6px", width: 20 }}>#</th>
+                    <th style={{ padding: "4px 6px" }}>Employee Name & ID</th>
+                    <th style={{ padding: "4px 6px" }}>Dept</th>
+                    <th style={{ padding: "4px 6px" }}>Category Tier</th>
+                    <th style={{ padding: "4px 6px" }}>Proposed Specs</th>
+                    <th style={{ padding: "4px 6px", textAlign: "right" }}>Budget (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(proposalPrintData.items || []).map((item, idx) => (
+                    <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb" }}>
+                      <td style={{ padding: "4px 6px", fontWeight: 700 }}>{idx + 1}</td>
+                      <td style={{ padding: "4px 6px" }}>
+                        <div style={{ fontWeight: 700 }}>{item.employee_name}</div>
+                        {item.employee_code && <div style={{ fontSize: 9, color: "#4b5563", lineHeight: 1.1 }}>{item.employee_code}</div>}
+                      </td>
+                      <td style={{ padding: "4px 6px" }}>{item.department}</td>
+                      <td style={{ padding: "4px 6px", fontWeight: 600, color: "#2563eb" }}>{item.laptop_category || item.phone_category || item.asset_category}</td>
+                      <td style={{ padding: "4px 6px" }}>{item.proposed_device || "—"}</td>
+                      <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>
+                        ₹{Number(item.budget_amount).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: "#f9fafb", borderTop: "2px solid #1f2937", fontWeight: 800 }}>
+                    <td colSpan={5} style={{ padding: "5px 6px", textAlign: "right" }}>
+                      TOTAL PROPOSED BUDGET ({(proposalPrintData.items || []).length} EMPLOYEES):
+                    </td>
+                    <td style={{ padding: "5px 6px", textAlign: "right", color: "#059669", fontSize: 11 }}>
+                      ₹{proposalPrintData.totalBudget.toLocaleString()}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
 
-                    {/* Continuation Page Header if page > 1 */}
-                    {chunkIdx > 0 && (
-                      <div style={{ paddingBottom: 8, marginBottom: 12, borderBottom: "1px solid #374151", display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 700, color: "#1f2937" }}>
-                        <span>{proposalPrintData.title} (Page {chunkIdx + 1} of {itemChunks.length})</span>
-                        <span>Ref: {proposalPrintData.proposalNo}</span>
-                      </div>
-                    )}
+            {/* Business Justification */}
+            <div style={{ marginBottom: 16, fontSize: 11, lineHeight: 1.4 }}>
+              <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 4 }}>
+                Business Justification & Department Entitlement:
+              </div>
+              <p style={{ margin: 0, padding: "6px 10px", borderLeft: "3px solid #2563eb", background: "#f8fafc", fontSize: "10.5px" }}>
+                {proposalPrintData.justification || "Proposed as per company policy entitlement and department operational requirements."}
+              </p>
+            </div>
 
-                    {/* Multi-Employee Allocation Proposal Table (Max 15 Rows Per Page) */}
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontWeight: 800, fontSize: 11, color: "#000000", marginBottom: 6 }}>
-                        📋 Proposed Employees & Device Allocations List {itemChunks.length > 1 ? `(Page ${chunkIdx + 1}/${itemChunks.length})` : ''}:
-                      </div>
+            {/* 2 Signatures Block: Proposed By (IT) & Approved By (Country Manager) */}
+            <div className="print-avoid-break" style={{ marginTop: 24, paddingTop: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, marginBottom: 20, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 36, marginBottom: 6 }}></div>
+                  <span>Proposed By (IT)</span>
+                </div>
 
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
-                        <thead>
-                          <tr style={{ background: "#f3f4f6", borderBottom: "2px solid #374151", textAlign: "left" }}>
-                            <th style={{ padding: "4px 6px", width: 20 }}>#</th>
-                            <th style={{ padding: "4px 6px" }}>Employee Name & ID</th>
-                            <th style={{ padding: "4px 6px" }}>Dept</th>
-                            <th style={{ padding: "4px 6px" }}>Category Tier</th>
-                            <th style={{ padding: "4px 6px" }}>Proposed Specs</th>
-                            <th style={{ padding: "4px 6px", textAlign: "right" }}>Budget (₹)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {chunk.map((item, idx) => (
-                            <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                              <td style={{ padding: "4px 6px", fontWeight: 700 }}>{startNo + idx + 1}</td>
-                              <td style={{ padding: "4px 6px" }}>
-                                <div style={{ fontWeight: 700 }}>{item.employee_name}</div>
-                                {item.employee_code && <div style={{ fontSize: 9, color: "#4b5563", lineHeight: 1.1 }}>{item.employee_code}</div>}
-                              </td>
-                              <td style={{ padding: "4px 6px" }}>{item.department}</td>
-                              <td style={{ padding: "4px 6px", fontWeight: 600, color: "#2563eb" }}>{item.laptop_category || item.phone_category || item.laptop_category || item.asset_category}</td>
-                              <td style={{ padding: "4px 6px" }}>{item.proposed_device || "—"}</td>
-                              <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>
-                                ₹{Number(item.budget_amount).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        {isLastPage && (
-                          <tfoot>
-                            <tr style={{ background: "#f9fafb", borderTop: "2px solid #1f2937", fontWeight: 800 }}>
-                              <td colSpan={5} style={{ padding: "5px 6px", textAlign: "right" }}>
-                                TOTAL PROPOSED BUDGET ({itemsList.length} EMPLOYEES):
-                              </td>
-                              <td style={{ padding: "5px 6px", textAlign: "right", color: "#059669", fontSize: 11 }}>
-                                ₹{proposalPrintData.totalBudget.toLocaleString()}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
-                    </div>
+                <div>
+                  <div style={{ borderBottom: "1px solid #000000", height: 36, marginBottom: 6 }}></div>
+                  <span>Approved By (Country Manager)</span>
+                </div>
+              </div>
 
-                    {/* Business Justification & 2 Signatures on Final Page */}
-                    {isLastPage && (
-                      <>
-                        <div style={{ marginBottom: 16, fontSize: 11, lineHeight: 1.4 }}>
-                          <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 4 }}>
-                            Business Justification & Department Entitlement:
-                          </div>
-                          <p style={{ margin: 0, padding: "6px 10px", borderLeft: "3px solid #2563eb", background: "#f8fafc", fontSize: "10.5px" }}>
-                            {proposalPrintData.justification || "Proposed as per company policy entitlement and department operational requirements."}
-                          </p>
-                        </div>
-
-                        {/* 2 Signatures Block: Proposed By (IT) & Approved By (Country Manager) */}
-                        <div className="print-avoid-break" style={{ marginTop: 24, paddingTop: 10 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, marginBottom: 20, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
-                            <div>
-                              <div style={{ borderBottom: "1px solid #000000", height: 36, marginBottom: 6 }}></div>
-                              <span>Proposed By (IT)</span>
-                            </div>
-
-                            <div>
-                              <div style={{ borderBottom: "1px solid #000000", height: 36, marginBottom: 6 }}></div>
-                              <span>Approved By (Country Manager)</span>
-                            </div>
-                          </div>
-
-                          {/* Footer Branding */}
-                          <div style={{ textAlign: "center", fontSize: 9, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 8, lineHeight: 1.4 }}>
-                            <div>A Company in the HydraSpecma Group</div>
-                            <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                );
-              });
-            })()}
+              {/* Footer Branding */}
+              <div style={{ textAlign: "center", fontSize: 9, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 8, lineHeight: 1.4 }}>
+                <div>A Company in the HydraSpecma Group</div>
+                <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
+              </div>
+            </div>
           </div>
         </Modal>
       )}
