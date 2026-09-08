@@ -1493,6 +1493,9 @@ export default function PhonesPage() {
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
       {/* Official HydraSpecma Mobile Issue Form Printable Modal */}
       {printRow && (
         <Modal
