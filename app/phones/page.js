@@ -387,6 +387,40 @@ export default function PhonesPage() {
     }));
   }
 
+  // Print Mobile Issue Form State & Helpers
+  const [printRow, setPrintRow] = useState(null);
+
+  function formatDateDDMMMYYYY(dateStrStr) {
+    if (!dateStrStr) return "—";
+    const d = new Date(dateStrStr);
+    if (isNaN(d.getTime())) return dateStrStr;
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  }
+
+  function getDeviceMake(deviceDetails) {
+    if (!deviceDetails) return "Android / Standard";
+    const str = deviceDetails.toLowerCase();
+    if (str.includes("iphone") || str.includes("apple") || str.includes("ipad")) return "Apple";
+    if (str.includes("samsung") || str.includes("galaxy")) return "Samsung";
+    if (str.includes("pixel") || str.includes("google")) return "Google";
+    if (str.includes("oneplus")) return "OnePlus";
+    if (str.includes("xiaomi") || str.includes("redmi")) return "Xiaomi";
+    if (str.includes("vivo") || str.includes("oppo")) return "Oppo/Vivo";
+    return "Android / Standard";
+  }
+
+  function handleOpenPrintForm(r) {
+    setPrintRow(r);
+  }
+
+  function handlePrintAction() {
+    window.print();
+  }
+
   // Inline Grid Edit State & Handler Functions
   const [gridMode, setGridMode] = useState(false);
   const [gridRows, setGridRows] = useState([]);
@@ -1104,7 +1138,17 @@ export default function PhonesPage() {
                       )}
                     </td>
                     <td style={{ padding: "10px 14px" }}>
-                      <span className={`pill ${statusPillClass}`}>{isExp ? "Expired" : r.status}</span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                        <span className={`pill ${statusPillClass}`}>{isExp ? "Expired" : r.status}</span>
+                        <button
+                          type="button"
+                          className="btn ghost sm"
+                          onClick={() => handleOpenPrintForm(r)}
+                          style={{ fontSize: 11, padding: "2px 8px", borderColor: "var(--gold)", color: "var(--gold)", whiteSpace: "nowrap" }}
+                        >
+                          📄 Issue Form
+                        </button>
+                      </div>
                     </td>
                     <td style={{ padding: "10px 14px" }}>
                       {r.device_details ? (
@@ -1449,8 +1493,186 @@ export default function PhonesPage() {
               </button>
             </div>
           </div>
+      {/* Official HydraSpecma Mobile Issue Form Printable Modal */}
+      {printRow && (
+        <Modal
+          title={`📄 Official Mobile Issue Form — ${printRow.employee_name}`}
+          onClose={() => setPrintRow(null)}
+        >
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 10 }}>
+            <button className="btn sm primary" onClick={handlePrintAction}>
+              🖨️ Print Document
+            </button>
+            <button className="btn ghost sm" onClick={() => setPrintRow(null)}>
+              Close
+            </button>
+          </div>
+
+          {/* Printable Sheet formatted to match Image 3 */}
+          <div
+            id="printable-issue-form"
+            style={{
+              background: "#ffffff",
+              color: "#000000",
+              padding: "36px 44px",
+              borderRadius: 8,
+              fontFamily: "'Segoe UI', Arial, sans-serif",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+              maxWidth: 740,
+              margin: "0 auto",
+              border: "1px solid #e5e7eb",
+            }}
+          >
+            {/* Header Section */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+              <div>
+                {/* Logo Branding */}
+                <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <span style={{ fontSize: 32, fontWeight: 900, color: "#414b56", letterSpacing: "-1px", lineHeight: 1 }}>Hydra</span>
+                  <span style={{ fontSize: 32, fontWeight: 900, color: "#ffcc00", letterSpacing: "-1px", lineHeight: 1 }}>Specma</span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "right", fontSize: 11, color: "#333333", lineHeight: 1.4, maxWidth: 380 }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: "#000000", textTransform: "uppercase", marginBottom: 2 }}>
+                  HYDRASPECMA INDIA PRIVATE LIMITED
+                </div>
+                <div>Plot No.130A, Greenbase Industrial and Logistics Park,</div>
+                <div>Hiranandani Parks, Vadakkupattu Village,</div>
+                <div>Kundrathur Taluk, Kancheepuram, Tamil Nadu - 603 204.</div>
+                <div>E-mail : hsil.india@hydraspecma.com</div>
+                <div>www.hydraspecma.com</div>
+                <div>GSTIN: 33AABCH9436R1Z0</div>
+              </div>
+            </div>
+
+            <hr style={{ border: "none", borderTop: "1px dashed #666666", margin: "16px 0 24px" }} />
+
+            {/* Document Title */}
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 6, margin: 0, color: "#000000" }}>
+                Mobile Issue Form
+              </h2>
+            </div>
+
+            {/* Employee Details List */}
+            <div style={{ marginBottom: 28, fontSize: 13, lineHeight: 2 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Name of Employee</span>
+                <span>:</span>
+                <span style={{ fontWeight: 700, textDecoration: "underline", textDecorationStyle: "wavy", textDecorationColor: "#dc2626" }}>
+                  {printRow.employee_name}
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Emp. ID</span>
+                <span>:</span>
+                <span style={{ fontWeight: 700 }}>{printRow.employee_code || "—"}</span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Department</span>
+                <span>:</span>
+                <span style={{ fontWeight: 700 }}>{printRow.department}</span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Date of Issuance</span>
+                <span>:</span>
+                <span style={{ fontWeight: 700 }}>{formatDateDDMMMYYYY(printRow.received_date)}</span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Location</span>
+                <span>:</span>
+                <span style={{ fontWeight: 700, textDecoration: "underline", textDecorationStyle: "wavy", textDecorationColor: "#dc2626" }}>
+                  Oragadam
+                </span>
+              </div>
+            </div>
+
+            {/* Device Details Section */}
+            <div style={{ marginBottom: 28, fontSize: 13, lineHeight: 2 }}>
+              <div style={{ marginBottom: 8, fontStyle: "italic" }}>I have received the following device:</div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Model No.</span>
+                <span>:</span>
+                <span style={{ fontWeight: 700, textDecoration: "underline", textDecorationStyle: "wavy", textDecorationColor: "#dc2626" }}>
+                  {printRow.device_details || printRow.phone_category}
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Make</span>
+                <span>:</span>
+                <span style={{ fontWeight: 600 }}>{getDeviceMake(printRow.device_details || printRow.phone_category)}</span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
+                <span style={{ fontWeight: 700 }}>Serial No.</span>
+                <span>:</span>
+                <span style={{ fontWeight: 800, color: "#002060" }}>{printRow.serial_imei || "—"}</span>
+              </div>
+            </div>
+
+            {/* Declaration by Employee */}
+            <div style={{ marginBottom: 50, fontSize: 12, lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 800, textDecoration: "underline", marginBottom: 6 }}>
+                Declaration by Employee:
+              </div>
+              <p style={{ margin: 0, textIndent: 36 }}>
+                I understand that I am responsible for the device issued to me and that I will care for the device in such a manner as to prevent loss or damage.
+              </p>
+            </div>
+
+            {/* Signature Section */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 50, fontSize: 13, fontWeight: 700 }}>
+              <div>
+                <span>Employee Signature</span>
+                <span style={{ display: "inline-block", width: 140, borderBottom: "2px double #2563eb", marginLeft: 16 }}></span>
+              </div>
+
+              <div>
+                <span>IT Signature</span>
+                <span style={{ display: "inline-block", width: 140, borderBottom: "1px solid #000000", marginLeft: 16 }}></span>
+              </div>
+            </div>
+
+            {/* Footer Branding */}
+            <div style={{ textAlign: "center", fontSize: 10, color: "#666666", borderTop: "1px solid #e5e7eb", paddingTop: 12, lineHeight: 1.5 }}>
+              <div>A Company in the <span style={{ textDecoration: "underline", textDecorationStyle: "wavy", textDecorationColor: "#dc2626" }}>HydraSpecma</span> Group</div>
+              <div>Corporate Identity Number: U29219TN2007PTCO63264</div>
+            </div>
+          </div>
         </Modal>
       )}
+
+      {/* Embedded CSS for Print Mode */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #printable-issue-form, #printable-issue-form * {
+            visibility: visible !important;
+          }
+          #printable-issue-form {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 24px 36px !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            border: none !important;
+          }
+        }
+      `}</style>
     </Shell>
   );
 }
