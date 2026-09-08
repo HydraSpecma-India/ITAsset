@@ -1650,29 +1650,33 @@ export default function PhonesPage() {
       )}
 
       {/* Embedded CSS for Print Mode */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-issue-form, #printable-issue-form * {
-            visibility: visible !important;
-          }
-          #printable-issue-form {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            margin: 0 !important;
-            padding: 24px 36px !important;
-            box-shadow: none !important;
-            background: #ffffff !important;
-            color: #000000 !important;
-            border: none !important;
-          }
-        }
-      `}</style>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #printable-issue-form, #printable-issue-form * {
+                visibility: visible !important;
+              }
+              #printable-issue-form {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 24px 36px !important;
+                box-shadow: none !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                border: none !important;
+              }
+            }
+          `,
+        }}
+      />
     </Shell>
   );
 }
