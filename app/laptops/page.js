@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Shell, { isPhoneModuleAuthorized, canManagePhoneAllocations } from "@/components/Shell";
 import { Card, Field, Modal, Empty } from "@/components/ui";
 import { supabase } from "@/lib/supabase";
-import { money, dateStr, todayISO, daysUntil, csvDownload } from "@/lib/format";
+import { money, dateStr, todayISO, daysUntil, csvDownload, exportProposalToPdf } from "@/lib/format";
 import { useAuth } from "@/lib/session";
 import { useDept } from "@/lib/department";
 
@@ -1872,8 +1872,18 @@ export default function LaptopsPage() {
           onClose={() => setProposalPrintData(null)}
         >
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12, gap: 10 }}>
-            <button className="btn sm primary" onClick={() => window.print()}>
-              🖨️ Print Proposal Document
+            <button
+              className="btn sm primary"
+              onClick={() => {
+                const fname = `${(proposalPrintData.title || "Proposal").replace(/[^a-zA-Z0-9]/g, "_")}_${proposalPrintData.versionLabel || "Draft"}.pdf`;
+                exportProposalToPdf("printable-proposal-form", fname);
+              }}
+              style={{ background: "#2563eb", color: "#ffffff", fontWeight: 700 }}
+            >
+              📥 Download PDF
+            </button>
+            <button className="btn ghost sm" onClick={() => window.print()}>
+              🖨️ Browser Print
             </button>
             <button className="btn ghost sm" onClick={() => setProposalPrintData(null)}>
               Close
