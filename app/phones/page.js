@@ -1325,6 +1325,9 @@ export default function PhonesPage() {
               </button>
             </div>
           </form>
+        </Modal>
+      )}
+
       {/* Modal for Managing Phone Categories & Tiers */}
       {catModalOpen && (
         <Modal
