@@ -258,6 +258,7 @@ export default function PhonesPage() {
           department: r.department || "IT",
           phone_category: r.phone_category,
           budget_amount: Number(r.budget_amount || 25000),
+          eligible_date: r.eligible_date || todayISO(),
           proposed_device: r.device_details || `${r.phone_category} Device`,
         }));
       }
@@ -271,6 +272,7 @@ export default function PhonesPage() {
           department: r.department || "IT",
           phone_category: r.phone_category || "iPhone (₹55k)",
           budget_amount: Number(r.budget_amount || 25000),
+          eligible_date: r.eligible_date || todayISO(),
           proposed_device: r.device_details || `${r.phone_category || "Item"} Device`,
         }));
       }
@@ -286,6 +288,7 @@ export default function PhonesPage() {
           department: dept === "All" ? "IT" : dept,
           phone_category: selectedCatObj ? selectedCatObj.id : "iPhone (₹55k)",
           budget_amount: selectedCatObj ? selectedCatObj.budget : 55000,
+          eligible_date: todayISO(),
           proposed_device: selectedCatObj ? `${selectedCatObj.id} Entitlement Device` : "Mobile Device",
         },
       ];
@@ -310,6 +313,7 @@ export default function PhonesPage() {
         department: dept === "All" ? "IT" : dept,
         phone_category: selectedCatObj ? selectedCatObj.id : "iPhone (₹55k)",
         budget_amount: selectedCatObj ? selectedCatObj.budget : 55000,
+        eligible_date: todayISO(),
         proposed_device: selectedCatObj ? `${selectedCatObj.id} Entitlement Device` : "Mobile Device",
       },
     ]);
@@ -363,6 +367,7 @@ export default function PhonesPage() {
         department: r.department || "IT",
         phone_category: r.phone_category || "iPhone (₹55k)",
         budget_amount: Number(r.budget_amount || 25000),
+        eligible_date: r.eligible_date || todayISO(),
         proposed_device: r.device_details || `${r.phone_category || "Item"} Device`,
       }))
     );
@@ -469,6 +474,7 @@ export default function PhonesPage() {
     const items = (propRecord.items || []).map((item, idx) => ({
       ...item,
       tempId: item.tempId || "p_ret_" + idx + "_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+      eligible_date: item.eligible_date || todayISO(),
     }));
     setProposalItems(items);
     setProposalHistoryOpen(false);
@@ -2135,7 +2141,8 @@ export default function PhonesPage() {
                       <th style={{ padding: "8px", minWidth: 160 }}>Employee Name *</th>
                       <th style={{ padding: "8px", minWidth: 110 }}>Emp ID / Email</th>
                       <th style={{ padding: "8px", minWidth: 110 }}>Department</th>
-                      <th style={{ padding: "8px", minWidth: 150 }}>Category Tier</th>
+                      <th style={{ padding: "8px", minWidth: 140 }}>Category Tier</th>
+                      <th style={{ padding: "8px", minWidth: 115 }}>Eligible From</th>
                       <th style={{ padding: "8px", minWidth: 90 }}>Budget (₹)</th>
                       <th style={{ padding: "8px", minWidth: 140 }}>Proposed Device Specs</th>
                       <th style={{ padding: "8px", width: 40, textAlign: "center" }}>Action</th>
@@ -2241,6 +2248,14 @@ export default function PhonesPage() {
                               <option key={t.id} value={t.id}>{t.id}</option>
                             ))}
                           </select>
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input
+                            type="date"
+                            value={item.eligible_date || todayISO()}
+                            onChange={(e) => updateProposalItem(idx, "eligible_date", e.target.value)}
+                            style={{ width: "100%", padding: "4px 6px", fontSize: 11, borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-input)", color: "var(--fg)" }}
+                          />
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <input
@@ -2401,6 +2416,7 @@ export default function PhonesPage() {
                     <th style={{ padding: "4px 6px" }}>Employee Name & ID</th>
                     <th style={{ padding: "4px 6px" }}>Dept</th>
                     <th style={{ padding: "4px 6px" }}>Category Tier</th>
+                    <th style={{ padding: "4px 6px" }}>Eligible From</th>
                     <th style={{ padding: "4px 6px" }}>Proposed Specs</th>
                     <th style={{ padding: "4px 6px", textAlign: "right" }}>Budget (₹)</th>
                   </tr>
@@ -2415,6 +2431,7 @@ export default function PhonesPage() {
                       </td>
                       <td style={{ padding: "4px 6px" }}>{item.department}</td>
                       <td style={{ padding: "4px 6px", fontWeight: 600, color: "#2563eb" }}>{item.phone_category || item.laptop_category || item.asset_category}</td>
+                      <td style={{ padding: "4px 6px" }}>{item.eligible_date ? dateStr(item.eligible_date) : "—"}</td>
                       <td style={{ padding: "4px 6px" }}>{item.proposed_device || "—"}</td>
                       <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>
                         ₹{Number(item.budget_amount).toLocaleString()}
@@ -2424,7 +2441,7 @@ export default function PhonesPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: "#f9fafb", borderTop: "2px solid #1f2937", fontWeight: 800 }}>
-                    <td colSpan={5} style={{ padding: "5px 6px", textAlign: "right" }}>
+                    <td colSpan={6} style={{ padding: "5px 6px", textAlign: "right" }}>
                       TOTAL PROPOSED BUDGET ({(proposalPrintData.items || []).length} EMPLOYEES):
                     </td>
                     <td style={{ padding: "5px 6px", textAlign: "right", color: "#059669", fontSize: 11 }}>
