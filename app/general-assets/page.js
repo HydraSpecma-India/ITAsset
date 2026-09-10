@@ -2164,14 +2164,14 @@ export default function GeneralAssetsPage() {
               #printable-issue-form, #printable-issue-form *,
               #printable-proposal-form, #printable-proposal-form * { visibility: visible !important; }
               #printable-issue-form {
-                position: absolute !important;
+                position: fixed !important;
                 left: 0 !important;
                 top: 0 !important;
                 width: 100% !important;
                 height: 100% !important;
-                min-height: 265mm !important;
+                min-height: 275mm !important;
                 margin: 0 !important;
-                padding: 0 !important;
+                padding: 30px 45px 24px 45px !important;
                 box-shadow: none !important;
                 background: #ffffff !important;
                 color: #000000 !important;

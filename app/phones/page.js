@@ -1987,7 +1987,7 @@ export default function PhonesPage() {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Emp. ID</span>
+                  <span style={{ fontWeight: 700 }}>Emp. ID / Email</span>
                   <span>:</span>
                   <span style={{ fontWeight: 700 }}>{printRow.employee_code || "—"}</span>
                 </div>
@@ -2015,10 +2015,10 @@ export default function PhonesPage() {
 
               {/* Device Details Section */}
               <div style={{ marginBottom: 28, fontSize: 13, lineHeight: 2 }}>
-                <div style={{ marginBottom: 8, fontStyle: "italic" }}>I have received the following device:</div>
+                <div style={{ marginBottom: 8, fontStyle: "italic" }}>I have received the following mobile phone asset:</div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Model No.</span>
+                  <span style={{ fontWeight: 700 }}>Mobile Model</span>
                   <span>:</span>
                   <span style={{ fontWeight: 700 }}>
                     {printRow.device_details || printRow.phone_category}
@@ -2026,13 +2026,13 @@ export default function PhonesPage() {
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Make</span>
+                  <span style={{ fontWeight: 700 }}>Make / OEM</span>
                   <span>:</span>
                   <span style={{ fontWeight: 600 }}>{getDeviceMake(printRow.device_details || printRow.phone_category)}</span>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "160px 20px 1fr", alignItems: "center" }}>
-                  <span style={{ fontWeight: 700 }}>Serial No.</span>
+                  <span style={{ fontWeight: 700 }}>Serial No. / IMEI</span>
                   <span>:</span>
                   <span style={{ fontWeight: 800, color: "#002060" }}>{printRow.serial_imei || "—"}</span>
                 </div>
@@ -2044,7 +2044,7 @@ export default function PhonesPage() {
                   Declaration by Employee:
                 </div>
                 <p style={{ margin: 0, textIndent: 36 }}>
-                  I understand that I am responsible for the device issued to me and that I will care for the device in such a manner as to prevent loss or damage.
+                  I understand that I am responsible for the mobile phone issued to me and that I will care for the device in such a manner as to prevent loss, damage or data compromise.
                 </p>
               </div>
 
@@ -2615,14 +2615,14 @@ export default function PhonesPage() {
                 visibility: visible !important;
               }
               #printable-issue-form {
-                position: absolute !important;
+                position: fixed !important;
                 left: 0 !important;
                 top: 0 !important;
                 width: 100% !important;
                 height: 100% !important;
-                min-height: 265mm !important;
+                min-height: 275mm !important;
                 margin: 0 !important;
-                padding: 0 !important;
+                padding: 30px 45px 24px 45px !important;
                 box-shadow: none !important;
                 background: #ffffff !important;
                 color: #000000 !important;
