@@ -2614,7 +2614,25 @@ export default function PhonesPage() {
               #printable-proposal-form, #printable-proposal-form * {
                 visibility: visible !important;
               }
-              #printable-issue-form, #printable-proposal-form {
+              #printable-issue-form {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 265mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                border: none !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                box-sizing: border-box !important;
+              }
+              #printable-proposal-form {
                 position: absolute !important;
                 left: 0 !important;
                 top: 0 !important;

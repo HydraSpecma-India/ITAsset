@@ -2143,19 +2143,73 @@ export default function LaptopsPage() {
         dangerouslySetInnerHTML={{
           __html: `
             @media print {
+              @page {
+                size: A4 portrait;
+                margin: 8mm 10mm 8mm 10mm;
+              }
+              html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              div[role="dialog"],
+              div[style*="position: fixed"] {
+                position: static !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                border: none !important;
+                overflow: visible !important;
+                height: auto !important;
+                width: auto !important;
+                max-height: none !important;
+                transform: none !important;
+              }
               body * { visibility: hidden !important; }
               #printable-issue-form, #printable-issue-form *,
               #printable-proposal-form, #printable-proposal-form * { visibility: visible !important; }
-              #printable-issue-form, #printable-proposal-form {
-                position: fixed !important;
-                left: 0 !important; top: 0 !important;
-                width: 100% !important; height: 100% !important;
-                min-height: 275mm !important; margin: 0 !important;
-                padding: 30px 45px 24px 45px !important;
-                box-shadow: none !important; background: #ffffff !important;
-                color: #000000 !important; border: none !important;
-                display: flex !important; flex-direction: column !important;
-                justify-content: space-between !important; box-sizing: border-box !important;
+              #printable-issue-form {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 265mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                border: none !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: space-between !important;
+                box-sizing: border-box !important;
+              }
+              #printable-proposal-form {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                border: none !important;
+                display: block !important;
+                box-sizing: border-box !important;
+              }
+              tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+              }
+              .print-avoid-break {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
               }
             }
           `,
